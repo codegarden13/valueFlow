@@ -1,0 +1,20 @@
+# only the main readme must be included
+/app/**/readme.md 
+
+notes.md
+
+/app/config.json
+
+.DS_Store
+app/node_modules
+
+*.env
+*.log
+*.tmp
+
+# config contains private data, the exxample config is part of main readme
+/app/config.json
+
+
+
+_unused/

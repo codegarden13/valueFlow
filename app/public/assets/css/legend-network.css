@@ -1,0 +1,396 @@
+/* ========================================================================== 
+   legend-network.css
+   --------------------------------------------------------------------------
+   Legend Network Graph (D3 force layout)
+   Visualizes semantic layers: Source  →  Type  →  Category
+
+   Contract with legend.js
+   - .legend-graph            : viewport (clipped, local stacking context)
+   - .legend-graph__edges     : SVG layer for links (non-interactive)
+   - .legend-graph__nodes     : HTML layer for nodes (interactive)
+   - .legend-node             : positioned via transform translate(x,y)
+
+   Design goals
+   - Centralize “fast to tweak” values as :root variables.
+   - Keep node rendering lightweight (D3 updates transforms frequently).
+   - Allow JS to color edges per-link without fighting CSS.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   0) Component tokens (tweak here)
+--------------------------------------------------------------------------- */
+:root {
+  /* Geometry */
+  --legend-radius-circle: 50%;
+  --legend-chip-radius: 999px;
+  --legend-node-size: 86px;
+  --legend-node-padding: 0.6em;
+
+  /* Surfaces / borders */
+  --legend-surface-1: rgba(255, 255, 255, 0.08);
+  --legend-surface-2: rgba(255, 255, 255, 0.12);
+  --legend-border-1: rgba(0, 0, 0, 0.18);
+  --legend-border-2: rgba(0, 0, 0, 0.26);
+
+  /* Typography */
+  --legend-font-ui: var(--font-ui, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif);
+  --legend-font-strong: var(--font-important, var(--legend-font-ui));
+
+  --legend-font-node-base: var(--font-xs, 0.85rem);
+  --legend-font-node-label: var(--font-md, 1.05rem);
+  --legend-font-node-value: var(--font-sm, 0.95rem);
+
+  --legend-font-type-label: var(--font-sm, 0.95rem);
+  --legend-font-type-value: var(--font-xs, 0.85rem);
+
+  --legend-font-chip: var(--font-sm, 0.95rem);
+  --legend-font-chip-value: var(--font-xs, 0.85rem);
+
+  /* Effects */
+  /* Highlight / glow (chip + links)
+     NOTE: .legend-graph is clipped (overflow:hidden).
+     Therefore the CHIP halo must be mostly INSIDE the element (inset) to remain visible. */
+  --legend-glow-outer: 24px;      /* used by links (drop-shadow ok) */
+  --legend-glow-outer2: 32px;     /* extra soft halo radius (chip only) */
+  --legend-glow-ring: 2px;        /* crisp outline thickness */
+  --legend-glow-inset: 14px;      /* inner bloom (inset, not clipped) */
+  --legend-glow-alpha: 0.65;      /* glow opacity */
+  --legend-glow-boost: 1.02;      /* subtle scale on highlight */
+  --legend-glow-ring2: 8px;       /* soft ring thickness (outer-ish) */
+  --legend-glow-inset2: 24px;     /* deeper inner bloom */
+  --legend-glow-soft-alpha: 0.35; /* soft halo opacity */
+  --legend-glow-hard-alpha: 0.75; /* crisp ring opacity */
+
+  /* Source sign colors (net totals) */
+  --legend-src-pos-bg: rgba(16, 185, 129, 0.18);
+  --legend-src-pos-bd: rgba(16, 185, 129, 0.55);
+  --legend-src-pos-sh: rgba(16, 185, 129, 0.18);
+
+  --legend-src-neg-bg: rgba(239, 68, 68, 0.18);
+  --legend-src-neg-bd: rgba(239, 68, 68, 0.55);
+  --legend-src-neg-sh: rgba(239, 68, 68, 0.18);
+
+  --legend-src-zero-bg: rgba(148, 163, 184, 0.16);
+  --legend-src-zero-bd: rgba(148, 163, 184, 0.40);
+
+  /* Edges */
+  --legend-edge-stroke: rgba(0, 0, 0, 0.55);
+  --legend-edge-width: 1.8;
+  --legend-edge-opacity-base: 0.75;
+  --legend-edge-opacity-srcTyp: 0.6;
+  --legend-edge-opacity-typCat: 0.85;
+
+  /* Isolated styling */
+  --legend-isolated-opacity: 0.35;
+  --legend-isolated-grayscale: 1;
+}
+
+/* --------------------------------------------------------------------------
+   1) Host container
+--------------------------------------------------------------------------- */
+#legend.legend {
+  position: relative;
+  width: 100%;
+  color: var(--shadow-deep, #111);
+  background: transparent !important;
+}
+
+/* --------------------------------------------------------------------------
+   2) Force-layout viewport
+--------------------------------------------------------------------------- */
+.legend-graph {
+  position: relative;
+  background: transparent !important;
+  aspect-ratio: 1 / 1;
+  height: auto;
+  min-height: 320px;
+
+  overflow: hidden;
+  isolation: isolate;
+
+  padding: 12px;
+  box-sizing: border-box;
+
+  cursor: grab;
+  touch-action: none;
+}
+
+.legend-graph:active {
+  cursor: grabbing;
+}
+
+/* --------------------------------------------------------------------------
+   3) Layers (nodes above edges)
+--------------------------------------------------------------------------- */
+.legend-graph__edges {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.legend-graph__nodes {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+/* --------------------------------------------------------------------------
+   4) Base node
+--------------------------------------------------------------------------- */
+.legend-node {
+  position: absolute;
+  will-change: transform;
+  font-family: var(--legend-font-ui);
+}
+
+/* --------------------------------------------------------------------------
+   5) Circle nodes (shared): Source + Type
+--------------------------------------------------------------------------- */
+:is(.legend-node--source, .legend-node--type) {
+  width: var(--legend-node-size);
+  height: var(--legend-node-size);
+  border-radius: var(--legend-radius-circle);
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  padding: var(--legend-node-padding);
+  text-align: center;
+  white-space: nowrap;
+
+  background: var(--legend-surface-2);
+  border: 1px solid var(--legend-border-2);
+  backdrop-filter: var(--legend-blur);
+
+  opacity: var(--legend-node-opacity);
+}
+
+/* --------------------------------------------------------------------------
+   6) Source nodes
+--------------------------------------------------------------------------- */
+.legend-node--source {
+  font-size: var(--legend-font-node-base);
+  line-height: 1.1;
+  color: #000;
+}
+
+.legend-source__label {
+  font-size: var(--legend-font-node-label);
+  line-height: 1.15;
+}
+
+.legend-source__value {
+  margin-top: 0.3em;
+  font-size: var(--legend-font-node-value);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
+}
+
+.legend-node--source[data-sign="pos"] {
+  background: var(--legend-src-pos-bg);
+  border-color: var(--legend-src-pos-bd);
+  box-shadow: 0 0 0 3px var(--legend-src-pos-sh);
+}
+
+.legend-node--source[data-sign="neg"] {
+  background: var(--legend-src-neg-bg);
+  border-color: var(--legend-src-neg-bd);
+  box-shadow: 0 0 0 3px var(--legend-src-neg-sh);
+}
+
+.legend-node--source[data-sign="zero"] {
+  background: var(--legend-src-zero-bg);
+  border-color: var(--legend-src-zero-bd);
+}
+
+/* --------------------------------------------------------------------------
+   7) Type nodes
+--------------------------------------------------------------------------- */
+.legend-node--type {
+  font-family: var(--legend-font-strong);
+}
+
+.legend-type__label {
+  font-size: var(--legend-font-type-label);
+  line-height: 1.15;
+}
+
+.legend-type__value {
+  margin-top: 0.3em;
+  font-size: var(--legend-font-type-value);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+/* --------------------------------------------------------------------------
+   8) Category chips
+--------------------------------------------------------------------------- */
+
+.legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+
+  padding: 0.35em 0.6em;
+  border-radius: var(--legend-chip-radius);
+
+  font-size: var(--legend-font-chip);
+  line-height: 1.1;
+  white-space: nowrap;
+
+  border: 1px solid var(--legend-border-1);
+  background: var(--cat-bg, rgba(255, 255, 255, 0.26));
+  color: var(--cat-fg, inherit);
+
+  cursor: pointer;
+  user-select: none;
+
+  font-family: var(--legend-font-ui);
+
+  /* Layout: label above value */
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.15em;
+}
+
+.legend-chip__value {
+  margin-top: 0.05em;
+  margin-left: 0;
+  font-size: var(--legend-font-chip-value);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.legend-chip[data-active="false"] {
+  opacity: var(--legend-chip-off-opacity);
+  filter: grayscale(1);
+}
+
+.legend-chip:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* Highlighted chip (hover / halo from JS) */
+.legend-chip[data-highlight="true"] {
+  position: relative;
+  z-index: 3;
+  transform: translateZ(0) scale(var(--legend-glow-boost));
+
+  /* Multi-layer ring + inner bloom (works under clipping) */
+  box-shadow:
+    /* crisp ring */
+    0 0 0 var(--legend-glow-ring)
+      color-mix(in srgb, var(--legend-glow, currentColor) calc(var(--legend-glow-hard-alpha) * 100%), transparent),
+
+    /* soft ring (slightly larger) */
+    0 0 0 var(--legend-glow-ring2)
+      color-mix(in srgb, var(--legend-glow, currentColor) calc(var(--legend-glow-soft-alpha) * 100%), transparent),
+
+    /* soft outer halo (may clip near viewport edges, but boosts "radiance") */
+    0 0 var(--legend-glow-outer2)
+      color-mix(in srgb, var(--legend-glow, currentColor) 22%, transparent),
+
+    /* inner bloom (primary) */
+    inset 0 0 var(--legend-glow-inset)
+      color-mix(in srgb, var(--legend-glow, currentColor) calc(var(--legend-glow-alpha) * 100%), transparent),
+
+    /* inner bloom (deeper) */
+    inset 0 0 var(--legend-glow-inset2)
+      color-mix(in srgb, var(--legend-glow, currentColor) calc(var(--legend-glow-soft-alpha) * 100%), transparent);
+
+  /* Keep keyboard focus visible too */
+  outline: none;
+}
+
+/* Extra halo "sheen" layer (blurred) */
+.legend-chip[data-highlight="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: inherit;
+  pointer-events: none;
+
+  background:
+    radial-gradient(
+      circle at 30% 30%,
+      color-mix(in srgb, var(--legend-glow, currentColor) 55%, transparent) 0%,
+      transparent 60%
+    );
+
+  filter: blur(14px);
+  opacity: 0.55;
+}
+
+/* Focus-visible should match highlight style */
+.legend-chip:focus-visible {
+  outline: 2px solid
+    color-mix(in srgb, var(--legend-glow, currentColor) 70%, transparent);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   9) Edges (SVG <line>)
+--------------------------------------------------------------------------- */
+.legend-link {
+  color: var(--legend-edge-stroke);
+  stroke: currentColor;
+  stroke-width: var(--legend-edge-width);
+  stroke-linecap: round;
+  opacity: var(--legend-edge-opacity-base);
+}
+
+.legend-link--srcTyp {
+  opacity: var(--legend-edge-opacity-srcTyp);
+}
+
+.legend-link--typCat {
+  opacity: var(--legend-edge-opacity-typCat);
+}
+
+/* Highlighted link (active relation) */
+.legend-link[data-highlight="true"] {
+  stroke-width: calc(var(--legend-edge-width) * 1.6);
+  filter: drop-shadow(
+    0 0 var(--legend-glow-outer)
+      color-mix(in srgb, currentColor var(--legend-glow-opacity), transparent)
+  );
+}
+
+/* Keyboard focus for links (if made focusable) */
+.legend-link:focus-visible {
+  stroke-width: calc(var(--legend-edge-width) * 1.6);
+  filter: drop-shadow(
+    0 0 var(--legend-glow-outer)
+      color-mix(in srgb, currentColor var(--legend-glow-opacity), transparent)
+  );
+  outline: none;
+}
+
+/* --------------------------------------------------------------------------
+   10) Isolated nodes
+--------------------------------------------------------------------------- */
+.legend-node[data-isolated="true"] {
+  opacity: var(--legend-isolated-opacity);
+  filter: grayscale(var(--legend-isolated-grayscale));
+}
+
+/* --------------------------------------------------------------------------
+   11) Transitions (smooth highlight states)
+--------------------------------------------------------------------------- */
+.legend-chip,
+.legend-link {
+  transition:
+    opacity 180ms cubic-bezier(.2, .8, .2, 1),
+    filter 180ms cubic-bezier(.2, .8, .2, 1),
+    box-shadow 180ms cubic-bezier(.2, .8, .2, 1),
+    stroke-width 180ms cubic-bezier(.2, .8, .2, 1);
+}
