@@ -1,0 +1,73 @@
+
+
+/* =============================================================================
+   moneyTone.css
+   ----------------------------------------------------------------------------
+   Global semantic money tone system (rot/grün/neutral) for amounts and deltas.
+
+   Purpose
+   - Single source of truth for sign-based coloring across the UI
+     (legend chips, source nodes, tables, badges, etc.).
+
+   Contract
+   - Producers (JS/components) set either:
+       - data-tone="pos|neg|zero"   (preferred)
+       - OR .tone-pos / .tone-neg / .tone-zero
+   - Consumers (component CSS) read:
+       --tone-bg / --tone-bd / --tone-sh
+
+   Notes
+   - This file defines ONLY the global palette + utilities.
+   - Component-specific styling stays in component CSS (e.g. legend-network.css).
+   - Keep tokens stable; if you need theming, override in a theme layer.
+   ============================================================================= */
+
+:root {
+  /* Positive (green) */
+  --money-tone-pos-bg: rgba(16, 185, 129, 0.18);
+  --money-tone-pos-bd: rgba(16, 185, 129, 0.55);
+  --money-tone-pos-sh: rgba(16, 185, 129, 0.18);
+
+  /* Negative (red) */
+  --money-tone-neg-bg: rgba(239, 68, 68, 0.18);
+  --money-tone-neg-bd: rgba(239, 68, 68, 0.55);
+  --money-tone-neg-sh: rgba(239, 68, 68, 0.18);
+
+  /* Neutral/zero (grey) */
+  --money-tone-zero-bg: rgba(148, 163, 184, 0.16);
+  --money-tone-zero-bd: rgba(148, 163, 184, 0.40);
+}
+
+/* -----------------------------------------------------------------------------
+   Utilities: semantic tone -> component vars
+   Any element can opt-in by setting data-tone or tone classes.
+   -------------------------------------------------------------------------- */
+
+:where(.tone-pos, [data-tone="pos"]) {
+  --tone-bg: var(--money-tone-pos-bg);
+  --tone-bd: var(--money-tone-pos-bd);
+  --tone-sh: var(--money-tone-pos-sh);
+}
+
+:where(.tone-neg, [data-tone="neg"]) {
+  --tone-bg: var(--money-tone-neg-bg);
+  --tone-bd: var(--money-tone-neg-bd);
+  --tone-sh: var(--money-tone-neg-sh);
+}
+
+:where(.tone-zero, [data-tone="zero"]) {
+  --tone-bg: var(--money-tone-zero-bg);
+  --tone-bd: var(--money-tone-zero-bd);
+  --tone-sh: transparent;
+}
+
+/* -----------------------------------------------------------------------------
+   Backward-compat shim (optional)
+   Some older code used "tone-neutral". Keep it working as "zero".
+   -------------------------------------------------------------------------- */
+
+:where(.tone-neutral, [data-tone="neutral"]) {
+  --tone-bg: var(--money-tone-zero-bg);
+  --tone-bd: var(--money-tone-zero-bd);
+  --tone-sh: transparent;
+}
