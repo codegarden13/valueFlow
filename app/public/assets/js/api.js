@@ -218,7 +218,7 @@ export function mergeModels(models) {
   const catsSet = new Map();      // Map<catKey, firstRawLabel>
   const typesSet = new Map();     // Map<typeKey, firstRawLabel>
   const unitByCat = new Map();    // Map<catKey, unit>
-  const barsAcc = new Map();      // key = `${yearKey}||${type}||${cat}` -> aggregate
+  const barsAcc = new Map();      // key = `${yearKey}||${cat}||${type}` -> aggregate
   const detailsByKey = new Map(); // Map<string, any[]>
 
   // planned relations (dedup)
@@ -267,7 +267,7 @@ export function mergeModels(models) {
 
     if (year != null) yearsSet.add(year);
 
-    const k = `${yearKey}||${type}||${cat}`;
+    const k = `${yearKey}||${cat}||${type}`;
     let acc = barsAcc.get(k);
     if (!acc) {
       acc = { yearKey, year, type, cat, kosten: 0, menge: 0 };

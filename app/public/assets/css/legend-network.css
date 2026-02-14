@@ -61,17 +61,6 @@
   --legend-glow-soft-alpha: 0.35; /* soft halo opacity */
   --legend-glow-hard-alpha: 0.75; /* crisp ring opacity */
 
-  /* Source sign colors (net totals) */
-  --legend-src-pos-bg: rgba(16, 185, 129, 0.18);
-  --legend-src-pos-bd: rgba(16, 185, 129, 0.55);
-  --legend-src-pos-sh: rgba(16, 185, 129, 0.18);
-
-  --legend-src-neg-bg: rgba(239, 68, 68, 0.18);
-  --legend-src-neg-bd: rgba(239, 68, 68, 0.55);
-  --legend-src-neg-sh: rgba(239, 68, 68, 0.18);
-
-  --legend-src-zero-bg: rgba(148, 163, 184, 0.16);
-  --legend-src-zero-bd: rgba(148, 163, 184, 0.40);
 
   /* Edges */
   --legend-edge-stroke: rgba(0, 0, 0, 0.55);
@@ -83,6 +72,9 @@
   /* Isolated styling */
   --legend-isolated-opacity: 0.35;
   --legend-isolated-grayscale: 1;
+
+  /* If the off-opacity token is missing, stay readable */
+  --legend-chip-off-opacity: 0.78;
 }
 
 /* --------------------------------------------------------------------------
@@ -150,6 +142,37 @@
 }
 
 /* --------------------------------------------------------------------------
+   Money tone integration
+   --------------------------------------------------------------------------
+   Global palette + utilities are defined in moneyTone.css.
+
+   This component consumes:
+     --tone-bg / --tone-bd / --tone-sh
+
+   Source nodes set tone via:
+     data-sign="pos|neg|zero"
+--------------------------------------------------------------------------- */
+
+/* Map source node sign -> tone variables */
+.legend-node--source[data-sign="pos"] {
+  --tone-bg: var(--money-tone-pos-bg);
+  --tone-bd: var(--money-tone-pos-bd);
+  --tone-sh: var(--money-tone-pos-sh);
+}
+
+.legend-node--source[data-sign="neg"] {
+  --tone-bg: var(--money-tone-neg-bg);
+  --tone-bd: var(--money-tone-neg-bd);
+  --tone-sh: var(--money-tone-neg-sh);
+}
+
+.legend-node--source[data-sign="zero"] {
+  --tone-bg: var(--money-tone-zero-bg);
+  --tone-bd: var(--money-tone-zero-bd);
+  --tone-sh: transparent;
+}
+
+/* --------------------------------------------------------------------------
    5) Circle nodes (shared): Source + Type
 --------------------------------------------------------------------------- */
 :is(.legend-node--source, .legend-node--type) {
@@ -194,21 +217,14 @@
   opacity: 0.9;
 }
 
-.legend-node--source[data-sign="pos"] {
-  background: var(--legend-src-pos-bg);
-  border-color: var(--legend-src-pos-bd);
-  box-shadow: 0 0 0 3px var(--legend-src-pos-sh);
+/* Source nodes read shared tone vars (set via data-sign mapping above) */
+.legend-node--source:is([data-sign="pos"], [data-sign="neg"], [data-sign="zero"]) {
+  background: var(--tone-bg);
+  border-color: var(--tone-bd);
 }
 
-.legend-node--source[data-sign="neg"] {
-  background: var(--legend-src-neg-bg);
-  border-color: var(--legend-src-neg-bd);
-  box-shadow: 0 0 0 3px var(--legend-src-neg-sh);
-}
-
-.legend-node--source[data-sign="zero"] {
-  background: var(--legend-src-zero-bg);
-  border-color: var(--legend-src-zero-bd);
+.legend-node--source:is([data-sign="pos"], [data-sign="neg"]) {
+  box-shadow: 0 0 0 3px var(--tone-sh);
 }
 
 /* --------------------------------------------------------------------------
@@ -242,13 +258,13 @@
   padding: 0.35em 0.6em;
   border-radius: var(--legend-chip-radius);
 
-  font-size: var(--legend-font-chip);
-  line-height: 1.1;
-  white-space: nowrap;
-
+  /* Visual surface is category-colored (matches bar color) */
   border: 1px solid var(--legend-border-1);
-  background: var(--cat-bg, rgba(255, 255, 255, 0.26));
+  background: var(--cat-bg, var(--legend-surface-1, rgba(255, 255, 255, 0.10)));
   color: var(--cat-fg, inherit);
+
+  /* Ensure chips are visibly filled even when a parent applies filters */
+  background-clip: padding-box;
 
   cursor: pointer;
   user-select: none;
@@ -269,9 +285,31 @@
   opacity: 0.85;
 }
 
+/* Tone on amount/value line (rot/grün) — applied to the VALUE element only */
+.legend-chip__value:is(.tone-pos, .tone-neg, .tone-zero, [data-tone="pos"], [data-tone="neg"], [data-tone="zero"]) {
+  opacity: 0.95;
+}
+
+.legend-chip__value:is(.tone-pos, [data-tone="pos"]) {
+  color: color-mix(in srgb, var(--money-tone-pos-bd) 85%, #000);
+}
+
+.legend-chip__value:is(.tone-neg, [data-tone="neg"]) {
+  color: color-mix(in srgb, var(--money-tone-neg-bd) 85%, #000);
+}
+
+.legend-chip__value:is(.tone-zero, [data-tone="zero"]) {
+  color: color-mix(in srgb, var(--money-tone-zero-bd) 85%, #000);
+}
+
 .legend-chip[data-active="false"] {
   opacity: var(--legend-chip-off-opacity);
   filter: grayscale(1);
+}
+
+/* If the off-opacity token is missing, stay readable */
+:root {
+  --legend-chip-off-opacity: 0.78;
 }
 
 .legend-chip:focus-visible {

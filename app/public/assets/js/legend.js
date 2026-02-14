@@ -126,9 +126,13 @@ function ensureArrowMarkers(svg) {
 
   ensure("legend-arrow-end", "10", "M 0 0 L 10 5 L 0 10 z");
   ensure("legend-arrow-start", "0", "M 10 0 L 0 5 L 10 10 z");
+
+  ensure("legend-arrow-end-hi", "10", "M 0 0 L 10 5 L 0 10 z");
+  ensure("legend-arrow-start-hi", "0", "M 10 0 L 0 5 L 10 10 z");
 }
 
 function arrowPlacementForKind(kind) {
+  // This is no longer used for the default/non-highlight arrows, but kept for potential future use.
   const k = String(kind || "");
   if (k.startsWith("typCat")) return { start: true, end: false };
   if (k.startsWith("srcCat")) return { start: true, end: false };
@@ -260,18 +264,33 @@ export function renderLegend({
     const catId = next ? `cat:${next}` : null;
     const glowColor = next ? (colorByCat.get(next) || "") : "";
 
-    // Safari-safe arrow coloring: markers do not reliably support context-stroke.
-    // We update the marker path fill to match the currently highlighted category.
+    // Marker coloring strategy:
+    // - Neutral arrows (non-highlight links) stay neutral.
+    // - Highlight arrows (only for highlighted-category links) are colored with the category glow.
+    const neutralColor = "rgba(16,24,40,0.34)";
+    const hiColor = glowColor || neutralColor;
+
     const endPath = svg.querySelector("#legend-arrow-end path");
     const startPath = svg.querySelector("#legend-arrow-start path");
-    const markerColor = glowColor || "rgba(16,24,40,0.34)";
+    const endHiPath = svg.querySelector("#legend-arrow-end-hi path");
+    const startHiPath = svg.querySelector("#legend-arrow-start-hi path");
+
     if (endPath) {
-      endPath.setAttribute("fill", markerColor);
+      endPath.setAttribute("fill", neutralColor);
       endPath.setAttribute("stroke", "none");
     }
     if (startPath) {
-      startPath.setAttribute("fill", markerColor);
+      startPath.setAttribute("fill", neutralColor);
       startPath.setAttribute("stroke", "none");
+    }
+
+    if (endHiPath) {
+      endHiPath.setAttribute("fill", hiColor);
+      endHiPath.setAttribute("stroke", "none");
+    }
+    if (startHiPath) {
+      startHiPath.setAttribute("fill", hiColor);
+      startHiPath.setAttribute("stroke", "none");
     }
 
     // 1) Chips: dataset.highlight + glow variable
@@ -301,19 +320,32 @@ export function renderLegend({
         return isHi ? (glowColor || base) : base;
       });
 
-    // 3) Arrow markers: only on highlighted links
+    // 3) Arrow markers:
+    // - NON-highlighted links: show a single neutral arrow tip at the Source/Type end (the non-cat end).
+    // - Highlighted-category links: show a single COLORED arrow tip at the non-cat end.
     linkSel.each(function (d) {
       const isHi = this.getAttribute("data-highlight") === "true";
-      if (!isHi) {
-        this.removeAttribute("marker-start");
-        this.removeAttribute("marker-end");
-        return;
-      }
-      const p = arrowPlacementForKind(d?.kind);
-      if (p.start) this.setAttribute("marker-start", "url(#legend-arrow-start)");
-      else this.removeAttribute("marker-start");
-      if (p.end) this.setAttribute("marker-end", "url(#legend-arrow-end)");
-      else this.removeAttribute("marker-end");
+
+      // Clear first
+      this.removeAttribute("marker-start");
+      this.removeAttribute("marker-end");
+
+      const sId = d?.source?.id || d?.source;
+      const tId = d?.target?.id || d?.target;
+      const sIsCat = typeof sId === "string" && sId.startsWith("cat:");
+      const tIsCat = typeof tId === "string" && tId.startsWith("cat:");
+
+      // Only place arrows on links that connect exactly one category node.
+      if (sIsCat === tIsCat) return;
+
+      const endMarker = isHi ? "url(#legend-arrow-end-hi)" : "url(#legend-arrow-end)";
+      const startMarker = isHi ? "url(#legend-arrow-start-hi)" : "url(#legend-arrow-start)";
+
+      // Arrow at the non-cat end:
+      // - if target is non-cat, marker-end puts the arrow at that end
+      // - if source is non-cat, marker-start puts the arrow at that end
+      if (!tIsCat) this.setAttribute("marker-end", endMarker);
+      else if (!sIsCat) this.setAttribute("marker-start", startMarker);
     });
   };
 

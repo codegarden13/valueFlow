@@ -50,7 +50,7 @@ function normalizePayload(payload) {
       event: payload,
       cat: "",
       color: "",
-      pillEl: null,
+      chipEl: null,
       raw: payload,
     };
   }
@@ -61,12 +61,12 @@ function normalizePayload(payload) {
   const cat = toStr(p.cat ?? p.category ?? p.kategorie ?? p.kat ?? p?.bar?.cat ?? p?.bar?.category);
   const color = toStr(p.color ?? p.fill ?? p.stroke ?? p?.bar?.color ?? p?.bar?.fill);
 
-  const pillEl = pickFirst(
-    p.pillEl,
+  const chipEl = pickFirst(
+    p.chipEl,
     p.legendPillEl,
-    p?.dom?.pillEl,
+    p?.dom?.chipEl,
     p?.dom?.legendPillEl,
-    p?.nodes?.pillEl,
+    p?.nodes?.chipEl,
     p?.nodes?.legendPillEl
   );
 
@@ -74,7 +74,7 @@ function normalizePayload(payload) {
     event: event && typeof event === "object" ? event : null,
     cat,
     color,
-    pillEl: isEl(pillEl) ? pillEl : null,
+    chipEl: isEl(chipEl) ? chipEl : null,
     raw: payload,
   };
 }
@@ -181,29 +181,29 @@ export function createBarHoverController({
 
     // Chart sometimes signals "no bar" with empty payloads.
     // In sticky mode we keep the last halo/model.
-    if (!n.event && !n.pillEl && !n.cat) {
+    if (!n.event && !n.chipEl && !n.cat) {
       if (clearOnEmptyHover && !stickyHover) clear();
       return;
     }
 
-    const pillEl = n.pillEl || resolvePill({ legendRootEl, cat: n.cat, payload: n.raw, event: n.event });
-    const color = resolveColor({ color: n.color, cat: n.cat, payload: n.raw, event: n.event, pillEl });
+    const chipEl = n.chipEl || resolvePill({ legendRootEl, cat: n.cat, payload: n.raw, event: n.event });
+    const color = resolveColor({ color: n.color, cat: n.cat, payload: n.raw, event: n.event, chipEl });
 
     // Prefer a concrete element: most stable (no geometry drift) and enables semantic highlight.
-    if (isEl(pillEl)) {
-      const key = `EL||${n.cat || pillEl.dataset?.cat || "?"}||${color}`;
+    if (isEl(chipEl)) {
+      const key = `EL||${n.cat || chipEl.dataset?.cat || "?"}||${color}`;
       if (key !== lastKey) {
         lastKey = key;
 
         // IMPORTANT: pass `el` and `cat` so renderLegendHalo can broadcast highlight.
-        halo.show({ el: pillEl, cat: n.cat || pillEl.dataset?.cat || null, color, strength });
+        halo.show({ el: chipEl, cat: n.cat || chipEl.dataset?.cat || null, color, strength });
 
-        broadcastHighlight({ cat: n.cat || pillEl.dataset?.cat || null, color });
+        broadcastHighlight({ cat: n.cat || chipEl.dataset?.cat || null, color });
 
         emit?.({
           cat: n.cat,
           color,
-          pillEl,
+          chipEl,
           geo: null,
           raw: n.raw,
           event: n.event,
@@ -230,7 +230,7 @@ export function createBarHoverController({
       emit?.({
         cat: n.cat,
         color,
-        pillEl: null,
+        chipEl: null,
         geo: { x: pt.x, y: pt.y, r: 18 },
         raw: n.raw,
         event: n.event,

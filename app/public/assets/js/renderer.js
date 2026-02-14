@@ -67,6 +67,31 @@ function dedupeStable(arr) {
 }
 
 
+// Stable category colors: build once per category universe, cache in ctx
+function ensureStableColorByCat(ctx, catsUniverse) {
+  if (!ctx) throw new Error("ensureStableColorByCat: ctx missing");
+  if (!Array.isArray(catsUniverse)) throw new Error("ensureStableColorByCat: catsUniverse must be an array");
+
+  // Signature changes only when the universe changes (order-sensitive = OK, universe is stable)
+  const sig = catsUniverse.join("||");
+
+  if (!ctx.colors) ctx.colors = {};
+
+  // Reuse existing map if universe unchanged
+  if (ctx.colors.catSig === sig && ctx.colors.catByCat instanceof Map) {
+    return ctx.colors.catByCat;
+  }
+
+  // Build once (no config overrides)
+  const m = buildColorByCat(catsUniverse);
+  if (!(m instanceof Map)) throw new Error("ensureStableColorByCat: buildColorByCat must return a Map");
+
+  ctx.colors.catSig = sig;
+  ctx.colors.catByCat = m;
+  return m;
+}
+
+
 
 
 // -----------------------------------------------------------------------------
@@ -288,20 +313,8 @@ async function computeDerived(ctx) {
 
 
 // -------------------------------------------------------------------------
-// Single source of truth: category colors (Chart + Legend)
-// -------------------------------------------------------------------------
-/*
-  colorByCat ist die zentrale, einzige Map, aus der:
-	•	der Barchart (fill der Bars), Legend-Chips, evtl. weitere UI-Elemente
-ihre Category-Farbe beziehen.
 
-Das verhindert:
-	•	Farbabweichungen zwischen Chart und Legend
-	•	inkonsistente Neuberechnung an mehreren Stellen
-	•	Farbsprünge beim Redraw
-*/
-  
-  const colorByCat = buildColorByCat(catsUniverse, ctx.config?.catColors);
+ const colorByCat = ensureStableColorByCat(ctx, catsUniverse);
 
   // -------------------------------------------------------------------------
   // 1b) Options: universes + inRange (UI uses inRange.*)

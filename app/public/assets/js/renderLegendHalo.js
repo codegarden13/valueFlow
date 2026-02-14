@@ -46,12 +46,12 @@ function isPill(el) {
   return isEl(el) && el.classList?.contains("pill");
 }
 
-function pickCat(opts, pillEl) {
+function pickCat(opts, chipEl) {
   const direct = opts?.cat;
   if (typeof direct === "string" && direct.length) return direct;
 
   // Convention: legend.js sets data-cat on category pills
-  const dc = pillEl?.dataset?.cat;
+  const dc = chipEl?.dataset?.cat;
   if (typeof dc === "string" && dc.length) return dc;
 
   return null;

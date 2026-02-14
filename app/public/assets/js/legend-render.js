@@ -42,7 +42,7 @@
 //    - No key normalization for categories (Option A identity semantics).
 // =============================================================================
 
-
+import { toneOfValue, applyToneFromValue } from "./moneytone.js";
 
 // Micro DOM helper
 function el(tag, className, text) {
@@ -201,8 +201,11 @@ export function renderHtmlNodes({
     const circle = el("div", "legend-node legend-node--source legend-node--type");
     circle.title = `${node.label}${totalStr ? " · " + totalStr : ""}`;
 
-    // sign data attribute (optional: renderer can set)
-    // circle.dataset.sign = ...
+    // Money tone (shared system)
+    // - We keep legacy `data-sign="pos|neg|zero"` for source nodes, because
+    //   legend-network.css maps it to global moneyTone.css tokens.
+    // - The semantic decision comes from moneytone.js (single source of truth).
+    circle.dataset.sign = toneOfValue(total);
 
     const lab = el("div", "legend-type__label", node.label);
     const val = el("div", "legend-type__value", totalStr);
@@ -265,7 +268,19 @@ export function renderHtmlNodes({
 
     const total = catTotals?.get?.(node.cat);
     const valueEl = el("span", "legend-chip__value", total == null ? "" : formatTotal(total, mode));
-    if (total == null) valueEl.style.display = "none";
+
+    // Money tone for amount chips
+    // - Use data-tone (preferred) so moneyTone.css can style any component.
+    // - legend-network.css consumes --tone-* variables.
+    if (total == null) {
+      valueEl.style.display = "none";
+      // Ensure no stale tone when value disappears
+      btn.removeAttribute("data-tone");
+      btn.classList.remove("tone-pos", "tone-neg", "tone-zero", "tone-neutral");
+    } else {
+      valueEl.style.display = "";
+      applyToneFromValue(btn, total, { mode: "data" });
+    }
 
     btn.append(label, valueEl);
 
