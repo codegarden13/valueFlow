@@ -1,9 +1,14 @@
 # only the main readme must be included
 /app/**/readme.md 
 
+# Doku is private and contains the links to the readmes in the structure
+_doku
+
 notes.md
 
 /app/config.*
+
+
 
 .DS_Store
 app/node_modules
