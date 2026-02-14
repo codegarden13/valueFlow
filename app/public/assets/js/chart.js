@@ -252,6 +252,29 @@ export function drawChart({ svgEl, rootEl, data, state, colorByCat, onBarHover }
   // ---------------------------------------------------------------------------
   const gBarsRoot = g.append("g").attr("class", "bars");
 
+  // ---------------------------------------------------------------------------
+  // Hover hit-targets
+  // ---------------------------------------------------------------------------
+  // Bars can be sub-pixel thin (e.g. 0.09px). SVG hit-testing becomes unreliable.
+  // We therefore render a transparent hit-rect per bar with a minimum height.
+  const MIN_BAR_HIT_PX = 12;
+  const y0 = y(0);
+
+  function barGeom(d) {
+    const v = valueOf(d);
+    const yTop = y(Math.max(0, v));
+    const h = Math.abs(y(v) - y0);
+    return { v, yTop, h };
+  }
+
+  function hitGeom(d) {
+    const { yTop, h } = barGeom(d);
+    const hitH = Math.max(MIN_BAR_HIT_PX, h);
+    const mid = yTop + h / 2;
+    const hitY = mid - hitH / 2;
+    return { hitY, hitH };
+  }
+
   function emitHover(event, d) {
     if (!emitBarHover) return;
     const v = valueOf(d);
@@ -300,9 +323,17 @@ export function drawChart({ svgEl, rootEl, data, state, colorByCat, onBarHover }
 
       const gType = gYear.append("g").attr("transform", `translate(${xT},0)`);
 
-      const rects = gType
-        .selectAll("rect")
-        .data(rowsT, (d) => `${d.yearKey}||${d.type}||${d.cat}`)
+      // Two-layer rendering:
+      // - visible bar: accurate geometry, animated
+      // - hit rect: transparent, min height, reliable pointer events
+      const gVis = gType.append("g").attr("class", "bars-vis");
+      const gHit = gType.append("g").attr("class", "bars-hit");
+
+      const keyFn = (d) => `${d.yearKey}||${d.type}||${d.cat}`;
+
+      const bars = gVis
+        .selectAll("rect.bar")
+        .data(rowsT, keyFn)
         .join(
           (enter) =>
             enter
@@ -310,10 +341,12 @@ export function drawChart({ svgEl, rootEl, data, state, colorByCat, onBarHover }
               .attr("x", (d) => xCat(d.cat))
               .attr("width", xCat.bandwidth())
               // start collapsed at baseline
-              .attr("y", y(0))
+              .attr("y", y0)
               .attr("height", 0)
               .attr("fill", (d) => colorByCat.get(d.cat) || "#111")
-              .attr("class", (d) => (valueOf(d) < 0 ? "bar is-neg" : "bar is-pos"))
+              .attr("class", (d) => `bar ${valueOf(d) < 0 ? "is-neg" : "is-pos"}`)
+              // visible bars should not be the hit target
+              .style("pointer-events", "none")
               // animate to final geometry
               .call((sel) => {
                 sel
@@ -329,34 +362,62 @@ export function drawChart({ svgEl, rootEl, data, state, colorByCat, onBarHover }
                   .duration(ANIM_MS_SAFE)
                   .ease(ANIM_EASE)
                   .attr("y", (d) => y(Math.max(0, valueOf(d))))
-                  .attr("height", (d) => Math.abs(y(valueOf(d)) - y(0)));
+                  .attr("height", (d) => Math.abs(y(valueOf(d)) - y0));
               }),
           (update) =>
             update
               .attr("x", (d) => xCat(d.cat))
               .attr("width", xCat.bandwidth())
               .attr("fill", (d) => colorByCat.get(d.cat) || "#111")
-              .attr("class", (d) => (valueOf(d) < 0 ? "bar is-neg" : "bar is-pos"))
+              .attr("class", (d) => `bar ${valueOf(d) < 0 ? "is-neg" : "is-pos"}`)
+              .style("pointer-events", "none")
               .call((sel) => {
                 sel
                   .transition()
                   .duration(ANIM_MS_SAFE)
                   .ease(ANIM_EASE)
                   .attr("y", (d) => y(Math.max(0, valueOf(d))))
-                  .attr("height", (d) => Math.abs(y(valueOf(d)) - y(0)));
+                  .attr("height", (d) => Math.abs(y(valueOf(d)) - y0));
               }),
           (exit) =>
             exit
               .transition()
               .duration(180)
               .ease(d3.easeCubicIn)
-              .attr("y", y(0))
+              .attr("y", y0)
               .attr("height", 0)
               .remove()
         );
 
-      // IMPORTANT: emit hover on enter + move so controller always has a fresh event
-      rects
+      // Hit rects: final geometry (no animation needed) with min height.
+      const hits = gHit
+        .selectAll("rect.bar-hit")
+        .data(rowsT, keyFn)
+        .join(
+          (enter) =>
+            enter
+              .append("rect")
+              .attr("class", "bar-hit")
+              .attr("x", (d) => xCat(d.cat))
+              .attr("width", xCat.bandwidth())
+              .attr("y", (d) => hitGeom(d).hitY)
+              .attr("height", (d) => hitGeom(d).hitH)
+              .attr("fill", "transparent")
+              .style("pointer-events", "all"),
+          (update) =>
+            update
+              .attr("x", (d) => xCat(d.cat))
+              .attr("width", xCat.bandwidth())
+              .attr("y", (d) => hitGeom(d).hitY)
+              .attr("height", (d) => hitGeom(d).hitH)
+              .attr("fill", "transparent")
+              .style("pointer-events", "all"),
+          (exit) => exit.remove()
+        );
+
+      // IMPORTANT: emit hover on enter + move so controller always has a fresh event.
+      // Attach handlers to hit rects (not visible bars).
+      hits
         .on("pointerenter", (event, d) => emitHover(event, d))
         .on("pointermove", (event, d) => emitHover(event, d))
         .on("pointerleave", () => emitBarHover?.(null));

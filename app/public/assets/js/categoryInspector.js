@@ -46,6 +46,17 @@ function coerceDetailsByKey(detailsByKey) {
   return new Map();
 }
 
+/**
+ * Normalizes yearKey, cat, typ to a detailsByKey key: `${y}||${c}||${t}`.
+ * All parts to String, fallback "?" for empty/undefined.
+ */
+function makeDetailsKey(yearKey, cat, typ) {
+  const y = yearKey == null || yearKey === "" ? "?" : String(yearKey);
+  const c = cat == null || cat === "" ? "?" : String(cat);
+  const t = typ == null || typ === "" ? "?" : String(typ);
+  return `${y}||${c}||${t}`;
+}
+
 function getSourceLabel(ctx, sourceId) {
   const id = String(sourceId ?? "").trim();
   if (!id) return "";
@@ -133,6 +144,10 @@ function renderInspectorTable({ category, columns, rows, meta = {} }) {
 // -----------------------------------------------------------------------------
 function collectCategoryRows(ctx, payload) {
   const cat = String(payload?.cat || "");
+  const yearKeyPayload = payload?.yearKey ?? payload?.year ?? payload?.Jahr;
+  const typPayloadRaw = payload?.typ ?? payload?.type;
+  const typPayload = typPayloadRaw == null || typPayloadRaw === "" ? null : String(typPayloadRaw);
+  const includePrevYears = payload?.includePrevYears !== false;
 
   const enabledSources =
     ctx?.state?.enabledSourceIds instanceof Set && ctx.state.enabledSourceIds.size
@@ -153,27 +168,141 @@ function collectCategoryRows(ctx, payload) {
 
   const out = [];
 
-  for (const [key, arr] of details.entries()) {
-    const [yearKey, kCat, kTyp] = String(key).split("||");
-    if (kCat !== cat) continue;
-    if (enabledTypes && !enabledTypes.has(kTyp)) continue;
+  // --- Fast-path: chart hover provides a yearKey. We only collect rows for that slice.
+  const hasYearKey = yearKeyPayload != null && String(yearKeyPayload) !== "";
+  if (hasYearKey) {
+    const yKey = String(yearKeyPayload);
+    const isUndatedHover = yKey === undatedLabel;
+    const targetYearNum = !isUndatedHover ? Number(yKey) : NaN;
 
-    const isUndated = yearKey === undatedLabel;
-    if (!isUndated) {
-      const y = Number(yearKey);
-      if (Number.isFinite(yf) && Number.isFinite(y) && y < yf) continue;
-      if (Number.isFinite(yt) && Number.isFinite(y) && y > yt) continue;
+    // Guard: if hovered year itself is outside global range, return empty
+    if (!isUndatedHover) {
+      const y = targetYearNum;
+      if (Number.isFinite(yf) && Number.isFinite(y) && y < yf) {
+        return { category: cat, columns: [], rows: [], total: 0, yearKey: yKey, typ: typPayload };
+      }
+      if (Number.isFinite(yt) && Number.isFinite(y) && y > yt) {
+        return { category: cat, columns: [], rows: [], total: 0, yearKey: yKey, typ: typPayload };
+      }
     }
 
-    const rows = Array.isArray(arr) ? arr : [];
-    for (const r of rows) {
-      const sourceId = String(r?.Quelle ?? r?.sourceId ?? "");
-      if (enabledSources && sourceId && !enabledSources.has(sourceId)) continue;
+    // -----------------------------------------------------------------
+    // Enriched timeline: current year + all previous years (default)
+    // -----------------------------------------------------------------
+    if (includePrevYears) {
+      for (const [key, arr] of details.entries()) {
+        const [kYearKey, kCat, kTyp] = String(key).split("||");
+        if (kCat !== cat) continue;
 
-      const QuelleName = getSourceLabel(ctx, sourceId);
+        if (typPayload && kTyp !== typPayload) continue;
+        if (enabledTypes && !enabledTypes.has(kTyp)) continue;
 
-      // Preserve original row shape; enrich for UI.
-      out.push({ ...r, QuelleName, _key: key });
+        const isUndatedRow = kYearKey === undatedLabel;
+
+        if (!isUndatedRow) {
+          const y = Number(kYearKey);
+
+          if (!Number.isFinite(targetYearNum) || !Number.isFinite(y)) {
+            if (kYearKey !== yKey) continue;
+          } else {
+            if (y > targetYearNum) continue;
+          }
+
+          if (Number.isFinite(yf) && Number.isFinite(y) && y < yf) continue;
+          if (Number.isFinite(yt) && Number.isFinite(y) && y > yt) continue;
+        }
+
+        const rows = Array.isArray(arr) ? arr : [];
+        for (const r of rows) {
+          const sourceId = String(r?.Quelle ?? r?.sourceId ?? "");
+          if (enabledSources && sourceId && !enabledSources.has(sourceId)) continue;
+
+          const QuelleName = getSourceLabel(ctx, sourceId);
+
+          out.push({
+            ...r,
+            QuelleName,
+            _key: key,
+            _sliceYearKey: kYearKey,
+            _isCurrentYear: kYearKey === yKey,
+          });
+        }
+      }
+
+    } else {
+      // Strict slice: only hovered year
+      if (typPayload) {
+        if (enabledTypes && !enabledTypes.has(typPayload)) {
+          return { category: cat, columns: [], rows: [], total: 0, yearKey: yKey, typ: typPayload };
+        }
+
+        const key = makeDetailsKey(yKey, cat, typPayload);
+        const arr = details.get(key);
+        const rows = Array.isArray(arr) ? arr : [];
+
+        for (const r of rows) {
+          const sourceId = String(r?.Quelle ?? r?.sourceId ?? "");
+          if (enabledSources && sourceId && !enabledSources.has(sourceId)) continue;
+
+          const QuelleName = getSourceLabel(ctx, sourceId);
+          out.push({
+            ...r,
+            QuelleName,
+            _key: key,
+            _sliceYearKey: yKey,
+            _isCurrentYear: true,
+          });
+        }
+      } else {
+        const prefix = `${yKey}||${cat}||`;
+        for (const [key, arr] of details.entries()) {
+          if (!String(key).startsWith(prefix)) continue;
+
+          const parts = String(key).split("||");
+          const kTyp = parts[2] ?? "?";
+          if (enabledTypes && !enabledTypes.has(kTyp)) continue;
+
+          const rows = Array.isArray(arr) ? arr : [];
+          for (const r of rows) {
+            const sourceId = String(r?.Quelle ?? r?.sourceId ?? "");
+            if (enabledSources && sourceId && !enabledSources.has(sourceId)) continue;
+
+            const QuelleName = getSourceLabel(ctx, sourceId);
+            out.push({
+              ...r,
+              QuelleName,
+              _key: key,
+              _sliceYearKey: yKey,
+              _isCurrentYear: true,
+            });
+          }
+        }
+      }
+    }
+
+  } else {
+    // --- Fallback: legacy callers only provide cat (and optionally typ). Preserve old behavior.
+    for (const [key, arr] of details.entries()) {
+      const [yearKey, kCat, kTyp] = String(key).split("||");
+      if (kCat !== cat) continue;
+      if (typPayload && kTyp !== typPayload) continue;
+      if (enabledTypes && !enabledTypes.has(kTyp)) continue;
+
+      const isUndated = yearKey === undatedLabel;
+      if (!isUndated) {
+        const y = Number(yearKey);
+        if (Number.isFinite(yf) && Number.isFinite(y) && y < yf) continue;
+        if (Number.isFinite(yt) && Number.isFinite(y) && y > yt) continue;
+      }
+
+      const rows = Array.isArray(arr) ? arr : [];
+      for (const r of rows) {
+        const sourceId = String(r?.Quelle ?? r?.sourceId ?? "");
+        if (enabledSources && sourceId && !enabledSources.has(sourceId)) continue;
+
+        const QuelleName = getSourceLabel(ctx, sourceId);
+        out.push({ ...r, QuelleName, _key: key });
+      }
     }
   }
 
@@ -210,7 +339,7 @@ function collectCategoryRows(ctx, payload) {
   const LIMIT = 500;
   const limited = out.length > LIMIT ? out.slice(0, LIMIT) : out;
 
-  return { category: cat, columns: cols, rows: limited, total: out.length };
+  return { category: cat, columns: cols, rows: limited, total: out.length, yearKey: hasYearKey ? String(yearKeyPayload) : null, typ: typPayload };
 }
 
 // -----------------------------------------------------------------------------
@@ -243,9 +372,18 @@ export function createCategoryInspector(
       return;
     }
 
-    const { category, columns, rows, total } = collectCategoryRows(ctx, payload);
+    const { category, columns, rows, total, yearKey, typ } = collectCategoryRows(ctx, payload);
 
-    const hint = total > rows.length ? `(${rows.length}/${total})` : "";
+    const includePrevYears = payload?.includePrevYears !== false;
+
+    const limitHint = total > rows.length ? `${rows.length}/${total}` : "";
+    const sliceHintParts = [];
+    if (yearKey) sliceHintParts.push(includePrevYears ? `≤ ${yearKey}` : String(yearKey));
+    if (typ) sliceHintParts.push(String(typ));
+
+    const sliceHint = sliceHintParts.length ? sliceHintParts.join(" · ") : "";
+    const hint = [sliceHint, limitHint].filter(Boolean).join(" — ");
+
     el.innerHTML = renderInspectorTable({ category, columns, rows, meta: { hint } });
 
     setInspectorTitle(category, hint, titleElId);

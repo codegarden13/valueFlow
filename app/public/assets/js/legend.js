@@ -251,15 +251,25 @@ export function renderLegend({
 
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
+  // -----------------------------------------------------------------------------
+  // Keep a handle to the simulation so we can gently reheat it on highlight changes.
+  let sim = null;
+
   // ---------------------------------------------------------------------------
   // Highlight / Halo interop (event-driven)
   // ---------------------------------------------------------------------------
 
-  let currentHighlightCat = highlightedCat;
+  // let currentHighlightCat = highlightedCat;
 
   const applyHighlight = (cat) => {
     const next = typeof cat === "string" && cat.length ? cat : null;
-    currentHighlightCat = next;
+
+    // Persist highlight into state so legend-simulation focus forces can react.
+    if (state && typeof state === "object") {
+      state.legendHighlightCat = next;
+    }
+
+    // currentHighlightCat = next;
 
     const catId = next ? `cat:${next}` : null;
     const glowColor = next ? (colorByCat.get(next) || "") : "";
@@ -347,9 +357,19 @@ export function renderLegend({
       if (!tIsCat) this.setAttribute("marker-end", endMarker);
       else if (!sIsCat) this.setAttribute("marker-start", startMarker);
     });
-  };
 
-  applyHighlight(currentHighlightCat);
+    // Reheat simulation so the focus forces visibly pull the highlighted category toward center.
+    if (sim && typeof sim.alpha === "function") {
+      try {
+        sim.alpha(0.9).alphaTarget(0.22).restart();
+        window.setTimeout(() => {
+          try {
+            sim.alphaTarget(0);
+          } catch {}
+        }, 140);
+      } catch {}
+    }
+  };
 
   if (!mountEl.__legendHighlightBound) {
     const onHi = (ev) => applyHighlight(ev?.detail?.cat ?? null);
@@ -377,7 +397,7 @@ export function renderLegend({
     }
   }
 
-  runSimulation({
+  sim = runSimulation({
     d3,
     nodes,
     links,
@@ -392,4 +412,7 @@ export function renderLegend({
     band: BAND_X,
     legendStopMs,
   });
+
+  // Apply highlight again after simulation is created, so the first highlight also recenters.
+  applyHighlight(highlightedCat);
 }

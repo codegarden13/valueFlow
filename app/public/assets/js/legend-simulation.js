@@ -74,6 +74,135 @@ export function runSimulation({
   band,
   legendStopMs,
 }) {
+  // --- Focus/highlight helpers
+  function resolveHighlightCat(state) {
+    const v =
+      state?.legendHighlightCat ??
+      state?.highlightedCategory ??
+      state?.hoverCat ??
+      state?.haloCat;
+    return typeof v === "string" && v.length ? v : null;
+  }
+
+  function focusCatId() {
+    const hi = resolveHighlightCat(state);
+    return hi ? `cat:${hi}` : null;
+  }
+
+  function isFocusCat(n) {
+    const id = focusCatId();
+    return !!id && n?.kind === "cat" && n?.id === id;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Deterministic seeding (prevents NaN targets / unstable layouts)
+  // ---------------------------------------------------------------------------
+  function hash32(str) {
+    const s = String(str ?? "");
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function jitter01(id, salt) {
+    const h = hash32(`${id}::${salt}`);
+    return (h & 0xffff) / 0xffff; // 0..1
+  }
+
+  function seedNodePositions() {
+    // Group by kind so we can distribute Y positions in a stable way.
+    const groups = { source: [], type: [], cat: [] };
+    for (const n of nodes || []) {
+      const k = n?.kind === "source" || n?.kind === "type" ? n.kind : "cat";
+      groups[k].push(n);
+    }
+
+    for (const kind of ["source", "type", "cat"]) {
+      const list = groups[kind];
+      const m = list.length || 1;
+
+      for (let i = 0; i < list.length; i++) {
+        const n = list[i];
+        const id = n?.id || `${kind}:${i}`;
+
+        // X seed: band lane + small deterministic jitter
+        if (!Number.isFinite(n.x)) {
+          const j = (jitter01(id, "x") - 0.5) * 48;
+          n.x = bandX(width, kind, band) + j;
+        }
+
+        // Y seed: evenly spaced + small deterministic jitter
+        if (!Number.isFinite(n.y)) {
+          const base = ((i + 1) / (m + 1)) * height;
+          const j = (jitter01(id, "y") - 0.5) * 120;
+          n.y = Math.max(24, Math.min(height - 24, base + j));
+        }
+
+        if (!Number.isFinite(n.vx)) n.vx = 0;
+        if (!Number.isFinite(n.vy)) n.vy = 0;
+      }
+    }
+  }
+
+  // Seed once at start to avoid NaN forces (forceY uses d.y for non-focus nodes).
+  seedNodePositions();
+
+  // ---------------------------------------------------------------------------
+  // Focus pinning (reliable centering)
+  // ---------------------------------------------------------------------------
+  function applyFocusPin() {
+    const id = focusCatId();
+
+    // Release previous pin if highlight cleared or changed.
+    for (const n of nodes || []) {
+      if (n?.__focusPinned && (!id || n.id !== id)) {
+        // Only release if not actively dragged.
+        if (n.fx != null || n.fy != null) {
+          // If the user is dragging, keep their pin.
+        } else {
+          n.fx = null;
+          n.fy = null;
+        }
+        n.__focusPinned = false;
+      }
+    }
+
+    if (!id) return;
+
+    // Pin focused cat node to center (unless user is actively dragging it).
+    const cx = width * 0.5;
+    const cy = height * 0.5;
+
+    for (const n of nodes || []) {
+      if (n?.id !== id || n?.kind !== "cat") continue;
+
+      // If node is being dragged (fx/fy set by drag handler), do not override.
+      const dragging = n.fx != null || n.fy != null;
+      if (!dragging) {
+        n.fx = cx;
+        n.fy = cy;
+        n.__focusPinned = true;
+      }
+      break;
+    }
+  }
+
+  // Dedicated focus force: gently but reliably pulls the highlighted category toward center.
+  // This is more robust than only using forceX/forceY strengths when the layout is crowded.
+  function focusForce(alpha) {
+    const id = focusCatId();
+    if (!id) return;
+
+    // Pinning is handled by applyFocusPin() (fx/fy). Keep this force as a no-op.
+    // (Retained to avoid changing external expectations.)
+    return;
+  }
+
+  focusForce.initialize = () => {};
+
   const sim = d3
     .forceSimulation(nodes)
     .force(
@@ -93,18 +222,35 @@ export function runSimulation({
         .strength(1.0)
         .iterations(6)
     )
-    .force("y", d3.forceY((d) => d.y).strength(0.14))
+    .force(
+      "y",
+      d3
+        .forceY((d) => {
+          // Pull highlighted category toward center; keep others near their seeded y.
+          return isFocusCat(d) ? height * 0.5 : d.y;
+        })
+        .strength((d) => (isFocusCat(d) ? 0.22 : 0.14))
+    )
     .force(
       "x",
-      d3.forceX((d) => bandX(width, d.kind, band)).strength((d) => (d.kind === "type" ? 0.36 : 0.30))
-    );
+      d3
+        .forceX((d) => {
+          // Pull highlighted category toward center; keep others in their lane band.
+          return isFocusCat(d) ? width * 0.5 : bandX(width, d.kind, band);
+        })
+        .strength((d) => {
+          if (isFocusCat(d)) return 0.65;
+          return d.kind === "type" ? 0.36 : 0.30;
+        })
+    )
+    .force("focus", focusForce);
 
   sim.alpha(1).alphaMin(0.01).alphaDecay(0.045);
 
   enableDrag(d3, sim, nodesHost);
 
   // ---- DOM-accurate edge trimming
-  const EDGE_PAD = 3;
+  const EDGE_PAD = 8;
   const halfSizeById = new Map(); // id -> { rx, ry }
 
   function measureHalfSize(n) {
@@ -126,6 +272,18 @@ export function runSimulation({
   function fallbackHalfSize(n) {
     const r = Number(collideR?.[n?.kind]) || 80;
     return { rx: r, ry: r };
+  }
+
+  function clampNodeToBounds(n) {
+    // Use measured DOM half-size whenever possible so chips never get clipped.
+    const hs = measureHalfSize(n) || halfSizeById.get(n?.id) || fallbackHalfSize(n);
+    const pad = 10; // breathing room for glow/halo
+
+    const rx = Math.max(12, (hs?.rx || 0) + pad);
+    const ry = Math.max(12, (hs?.ry || 0) + pad);
+
+    n.x = Math.max(rx, Math.min(width - rx, n.x));
+    n.y = Math.max(ry, Math.min(height - ry, n.y));
   }
 
   function ellipseBoundaryDist(rx, ry, ux, uy) {
@@ -166,8 +324,10 @@ export function runSimulation({
   };
 
   sim.on("tick", () => {
+    // Ensure focus pin is applied continuously (highlight can change while sim is running).
+    applyFocusPin();
     // clamp first
-    for (const n of nodes) clampToBounds(n, width, height, collideR);
+    for (const n of nodes) clampNodeToBounds(n);
 
     // links (trimmed)
     linkSel.each(function (d) {

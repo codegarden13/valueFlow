@@ -123,34 +123,65 @@ export function createRenderer() {
     if (ctx?.dom?.legendEl) ctx.dom.legendEl.innerHTML = "";
   }
 
- // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // Hover UX controllers (Chart ↔ Legend Halo ↔ Legend highlight ↔ Inspector)
 // ---------------------------------------------------------------------------
 function getHoverUX(ctx) {
-  if (ctx.__hoverUX && ctx.__hoverUX._v === 2) return ctx.__hoverUX;
+  const CACHE_VERSION = 3; // bump when wiring changes
 
-  if (!ctx?.dom?.legendEl) throw new Error("getHoverUX: ctx.dom.legendEl missing");
-  const legendEl = ctx.dom.legendEl;
+  if (ctx.__hoverUX && ctx.__hoverUX._v === CACHE_VERSION) return ctx.__hoverUX;
+
+  const legendEl = ctx?.dom?.legendEl;
+  if (!legendEl) throw new Error("getHoverUX: ctx.dom.legendEl missing");
 
   const inspector = createCategoryInspector(ctx);
 
   // Color resolver: prefer payload color, else derive from shared Map
-  const getColor = ({ color, cat }) => {
+  function getColor({ color, cat }) {
     const c = String(color || "").trim();
     if (c) return c;
-    const k = String(cat || "");
+
+    const k = String(cat || "").trim();
     const m = ctx?.derived?.colorByCat;
     if (m instanceof Map && k && m.has(k)) return m.get(k);
+
     return "rgba(255,255,255,0.9)";
-  };
+  }
+
+  /**
+   * Push hover model into the inspector.
+   * Critical: include yearKey/typ so the inspector can slice details precisely:
+   * `${yearKey}||${cat}||${typ}`
+   */
+  function pushInspector(model) {
+    if (!model) {
+      inspector.clear();
+      return;
+    }
+
+    // Category is mandatory for inspector.
+    const cat = String(model.cat || "").trim();
+    if (!cat) {
+      inspector.clear();
+      return;
+    }
+
+    // Year/type are optional, but *if present* they must be forwarded.
+    // Note: barHoverController normalizes to `yearKey` + `typ`.
+    const yearKey = String(model.yearKey || model.year || model.jahr || "").trim();
+    const typ = String(model.typ || model.type || "").trim();
+
+    inspector.update({
+      cat,
+      ...(yearKey ? { yearKey } : null),
+      ...(typ ? { typ } : null),
+    });
+  }
 
   const hoverCtl = createBarHoverController({
     legendRootEl: legendEl,
     getColor,
-    onHoverModel: (m) => {
-      if (!m) inspector.clear();
-      else inspector.update({ cat: m.cat });
-    },
+    onHoverModel: pushInspector,
   });
 
   // Ensure leaving the chart clears hover effects
@@ -163,7 +194,7 @@ function getHoverUX(ctx) {
   let pendingCat = null;
   let lastAppliedCat = Symbol("init");
 
-  const applyLegendHighlight = (cat) => {
+  function applyLegendHighlight(cat) {
     // Strict: store identity string or null
     ctx.state.legendHighlightCat = cat;
 
@@ -199,9 +230,9 @@ function getHoverUX(ctx) {
         ctx.requestRedraw(ctx);
       },
     });
-  };
+  }
 
-  const onLegendHighlight = (e) => {
+  function onLegendHighlight(e) {
     const cat = e?.detail?.cat ?? null;
 
     // De-dupe hard (avoid loops + repaint storms)
@@ -212,23 +243,24 @@ function getHoverUX(ctx) {
 
     rafId = requestAnimationFrame(() => {
       rafId = 0;
+
       const next = pendingCat;
       pendingCat = null;
 
-      // Avoid applying same value again
       if (next === lastAppliedCat) return;
       lastAppliedCat = next;
 
       applyLegendHighlight(next);
     });
-  };
+  }
 
-  // Register listener exactly once per ctx
-  legendEl.removeEventListener?.("legend:highlight", ctx.__hoverUX?.onLegendHighlight);
+  // Register listener exactly once per ctx (remove previous handler safely)
+  const prevHandler = ctx.__hoverUX?.onLegendHighlight;
+  if (prevHandler) legendEl.removeEventListener("legend:highlight", prevHandler);
   legendEl.addEventListener("legend:highlight", onLegendHighlight);
 
   ctx.__hoverUX = {
-    _v: 2,
+    _v: CACHE_VERSION,
     hoverCtl,
     inspector,
     onLegendHighlight,

@@ -42,8 +42,11 @@ function ensurePositioned(root) {
   if (cs.position === "static") root.style.position = "relative";
 }
 
-function isPill(el) {
-  return isEl(el) && el.classList?.contains("pill");
+function isLegendChip(el) {
+  if (!isEl(el)) return false;
+  const cl = el.classList;
+  // Support current legend markup and legacy markup.
+  return cl?.contains("legend-chip") || cl?.contains("pill") || cl?.contains("legend-pill");
 }
 
 function pickCat(opts, chipEl) {
@@ -114,7 +117,7 @@ export function ensureLegendHalo(rootEl) {
 
   function resolveTarget(opts) {
     const direct = opts?.el || opts?.targetEl;
-    if (isPill(direct) && rootEl.contains(direct)) return direct;
+    if (isLegendChip(direct) && rootEl.contains(direct)) return direct;
 
     const x = Number(opts?.x);
     const y = Number(opts?.y);
@@ -124,7 +127,7 @@ export function ensureLegendHalo(rootEl) {
     const hit = document.elementFromPoint(rect.left + x, rect.top + y);
     if (!hit) return null;
 
-    const pill = hit.closest?.(".pill");
+    const pill = hit.closest?.(".legend-chip, .pill, .legend-pill");
     return pill && rootEl.contains(pill) ? pill : null;
   }
 

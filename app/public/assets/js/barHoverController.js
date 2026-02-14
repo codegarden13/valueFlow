@@ -7,6 +7,7 @@
  * - Normalize whatever the chart hover callback provides into a stable "hover model".
  * - Drive the legend halo (visual) AND broadcast semantic highlight via renderLegendHalo.js.
  * - Provide a tiny, ctx-free handler that renderer/chart can call.
+ * - Include yearKey/type in the hover model when the chart provides it (so the inspector can slice details precisely).
  *
  * This module intentionally does NOT:
  * - compute aggregates
@@ -20,9 +21,6 @@
  */
 
 import { createLegendHalo } from "./renderLegendHalo.js";
-
-
-
 
 
 function isEl(v) {
@@ -51,6 +49,8 @@ function normalizePayload(payload) {
       cat: "",
       color: "",
       chipEl: null,
+      yearKey: "",
+      typ: "",
       raw: payload,
     };
   }
@@ -60,6 +60,14 @@ function normalizePayload(payload) {
 
   const cat = toStr(p.cat ?? p.category ?? p.kategorie ?? p.kat ?? p?.bar?.cat ?? p?.bar?.category);
   const color = toStr(p.color ?? p.fill ?? p.stroke ?? p?.bar?.color ?? p?.bar?.fill);
+
+  const yearKey = toStr(
+    p.yearKey ?? p.year ?? p.jahr ?? p?.bar?.yearKey ?? p?.bar?.year ?? p?.bar?.jahr ?? p?.bar?.x
+  );
+
+  const typ = toStr(
+    p.typ ?? p.type ?? p?.bar?.typ ?? p?.bar?.type
+  );
 
   const chipEl = pickFirst(
     p.chipEl,
@@ -75,6 +83,8 @@ function normalizePayload(payload) {
     cat,
     color,
     chipEl: isEl(chipEl) ? chipEl : null,
+    yearKey,
+    typ,
     raw: payload,
   };
 }
@@ -145,70 +155,103 @@ export function createBarHoverController({
   clearOnEmptyHover = false,
   clearOnChartLeave = false,
 } = {}) {
-  if (!isEl(legendRootEl)) throw new Error("createBarHoverController: legendRootEl missing/invalid");
+  if (!isEl(legendRootEl)) {
+    throw new Error("createBarHoverController: legendRootEl missing/invalid");
+  }
 
   const halo = createLegendHalo(legendRootEl);
+
   const resolvePill = typeof getPillEl === "function" ? getPillEl : defaultGetPillEl;
   const resolveColor = typeof getColor === "function" ? getColor : defaultGetColor;
   const emit = typeof onHoverModel === "function" ? onHoverModel : null;
 
-  let lastKey = "";
+  let lastCacheKey = "";
 
-  function broadcastHighlight({ cat, color }) {
-    // Contract: legend highlight must be observable by legend.js even if halo impl changes.
-    // Dispatch on legendRootEl (primary) and also on document (robust across mount/root refactors).
-    const detail = { cat: cat || null, color: color || "" };
-    try {
-      legendRootEl.dispatchEvent(new CustomEvent("legend:highlight", { bubbles: true, detail }));
-    } catch {}
-    try {
-      document.dispatchEvent(new CustomEvent("legend:highlight", { bubbles: true, detail }));
-    } catch {}
+  function emitHover(model) {
+    emit?.(model);
+  }
+
+  function resolveCat(chipEl, n) {
+    // prefer semantic payload; fallback to DOM dataset
+    return n.cat || (isEl(chipEl) ? (chipEl.dataset?.cat || "") : "");
+  }
+
+  function resolveSlice(n) {
+    return {
+      yearKey: n.yearKey || "",
+      typ: n.typ || "",
+    };
+  }
+
+  function cacheKeyForEl({ yearKey, cat, typ, color }) {
+    const y = yearKey || "?";
+    const c = cat || "?";
+    const t = typ || "?";
+    return `EL||${y}||${c}||${t}||${color}`;
+  }
+
+  function cacheKeyForPt({ yearKey, cat, typ, color, x, y }) {
+    const yy = yearKey || "?";
+    const c = cat || "?";
+    const t = typ || "?";
+    return `XY||${yy}||${c}||${t}||${color}||${x}||${y}`;
   }
 
   function clear() {
-    lastKey = "";
-    halo.hide(); // also broadcasts legend:highlight {cat:null}
-    broadcastHighlight({ cat: null, color: "" });
-    emit?.(null);
+    lastCacheKey = "";
+    halo.hide();          // also broadcasts legend:highlight {cat:null}
+    emitHover(null);
   }
 
   function onHover(payload) {
-
-
-    console.log("[barHover] onHover", payload);
     const n = normalizePayload(payload);
 
     // Chart sometimes signals "no bar" with empty payloads.
     // In sticky mode we keep the last halo/model.
-    if (!n.event && !n.chipEl && !n.cat) {
+    const isEmptySignal = !n.event && !n.chipEl && !n.cat;
+    if (isEmptySignal) {
+      // Keep semantics of your current code:
+      // only clear if caller wants it AND sticky is off.
       if (clearOnEmptyHover && !stickyHover) clear();
       return;
     }
 
-    const chipEl = n.chipEl || resolvePill({ legendRootEl, cat: n.cat, payload: n.raw, event: n.event });
-    const color = resolveColor({ color: n.color, cat: n.cat, payload: n.raw, event: n.event, chipEl });
+    const chipEl =
+      n.chipEl ||
+      resolvePill({ legendRootEl, cat: n.cat, payload: n.raw, event: n.event });
+
+    const color = resolveColor({
+      color: n.color,
+      cat: n.cat,
+      payload: n.raw,
+      event: n.event,
+      chipEl,
+    });
+
+    const cat = resolveCat(chipEl, n);
+    const { yearKey, typ } = resolveSlice(n);
 
     // Prefer a concrete element: most stable (no geometry drift) and enables semantic highlight.
     if (isEl(chipEl)) {
-      const key = `EL||${n.cat || chipEl.dataset?.cat || "?"}||${color}`;
-      if (key !== lastKey) {
-        lastKey = key;
+      const key = cacheKeyForEl({ yearKey, cat, typ, color });
 
-        // IMPORTANT: pass `el` and `cat` so renderLegendHalo can broadcast highlight.
-        halo.show({ el: chipEl, cat: n.cat || chipEl.dataset?.cat || null, color, strength });
+      if (key === lastCacheKey) return;
+      lastCacheKey = key;
 
-        broadcastHighlight({ cat: n.cat || chipEl.dataset?.cat || null, color });
+      // IMPORTANT: pass `el` and `cat` so renderLegendHalo can broadcast highlight.
+      halo.show({ el: chipEl, cat: cat || null, color, strength });
 
-        emit?.({
-          cat: n.cat,
-          color,
-          chipEl,
-          geo: null,
-          raw: n.raw,
-          event: n.event,
-        });
-      }
+      emitHover({
+        cat,
+        yearKey,
+        typ,
+        color,
+        chipEl,
+        geo: null,
+        raw: n.raw,
+        event: n.event,
+      });
+
       return;
     }
 
@@ -220,22 +263,25 @@ export function createBarHoverController({
       return;
     }
 
-    const key = `XY||${n.cat || "?"}||${color}||${Math.round(pt.x)}||${Math.round(pt.y)}`;
-    if (key !== lastKey) {
-      lastKey = key;
-      halo.show({ x: pt.x, y: pt.y, cat: n.cat || null, color, strength });
+    const rx = Math.round(pt.x);
+    const ry = Math.round(pt.y);
+    const key = cacheKeyForPt({ yearKey, cat: n.cat || "", typ, color, x: rx, y: ry });
 
-      broadcastHighlight({ cat: n.cat || null, color });
+    if (key === lastCacheKey) return;
+    lastCacheKey = key;
 
-      emit?.({
-        cat: n.cat,
-        color,
-        chipEl: null,
-        geo: { x: pt.x, y: pt.y, r: 18 },
-        raw: n.raw,
-        event: n.event,
-      });
-    }
+    halo.show({ x: pt.x, y: pt.y, cat: n.cat || null, color, strength });
+
+    emitHover({
+      cat: n.cat || "",      // XY path cannot guarantee a DOM-derived cat
+      yearKey,
+      typ,
+      color,
+      chipEl: null,
+      geo: { x: pt.x, y: pt.y, r: 18 },
+      raw: n.raw,
+      event: n.event,
+    });
   }
 
   function attachChartLeave(chartEl) {
