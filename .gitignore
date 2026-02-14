@@ -3,7 +3,7 @@
 
 notes.md
 
-/app/config.json
+/app/config.*
 
 .DS_Store
 app/node_modules
