@@ -2,6 +2,8 @@
 
 *Interaktive Aalyse von Kosten, Mengen, Erlösen und Ergebnissen über die Jahre, strukturiert entlang eines konsistenten Wirkpfades (Quelle → Typ → Kategorie → wirtschaftlichen Resultat) , einsetzbar für Projektanalysen, Investitionsbewertungen, Kennzahlenvergleiche und ergebnisorientierte Auswertungen.*
 
+Das gibt es alles schon so irgendwie. Aber nicht so.
+
 
 
 ## Installation
