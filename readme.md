@@ -1,8 +1,16 @@
 # Themenbasierter KPI-Rechner über Zeiträume
 
-*Interaktive Aalyse von Kosten, Mengen, Erlösen und Ergebnissen über die Jahre, strukturiert entlang eines konsistenten Wirkpfades (Quelle → Typ → Kategorie → wirtschaftlichen Resultat) , einsetzbar für Projektanalysen, Investitionsbewertungen, Kennzahlenvergleiche und ergebnisorientierte Auswertungen.*
+Interaktive Analyse von Kosten, Mengen, Erlösen und Ergebnissen über Jahre entlang eines konsistenten Wirkpfades (Quelle → Typ → Kategorie → wirtschaftliches Resultat)
 
-Das gibt es alles schon so irgendwie. Aber nicht so.
+Einsatzbereich: Projektanalysen, Investitionsbewertungen, Kennzahlenvergleiche. Ergebnisorientierte Auswertungen. 
+
+## Usage
+
+- Definiere Buchungstypen (wenige) und Kategorien (viele). 
+- Lege dazu wenige Daten in wenigen CSV - Files ab. 
+
+
+PS.: Das gibt es alles schon so irgendwie. **Aber nicht so. 😎**
 
 
 
