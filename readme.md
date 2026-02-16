@@ -9,7 +9,9 @@ Interaktive Analyse von Kosten, Mengen, Erlösen und Ergebnissen über Jahre ent
 - Kennzahlenvergleiche
 - Ergebnisorientierte Auswertungen
 
-Das gibt es alles schon so irgendwie. **Aber nicht so. 😎**
+Das gibt es alles schon so irgendwie. Aber nicht so präzise und gleichzeitig **real. Für Menschen. 😎**
+
+![alt text](assets/example_legend01.png)
 
 ## Vorteile/ Abgrenzung zu klassischen BI-Tools:
 
