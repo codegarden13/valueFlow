@@ -119,12 +119,12 @@ Visualisierung struktureller Beziehungen zwischen Kategorien, Typen und Quellen
 
 </details>
 
-## Skalierung für bis zu 20mb Rohdaten 
+## Skalierung 
 
-Wenn es nicht reicht, sag Bescheid. Dann baue Ich was anderes.
+bis zu 20MB Rohdaten. Wenn es nicht reicht, sag Bescheid - für die optimale Erfahrung:
 
 - 150.000 CSV-Zeilen insgesamt (< 10–20 MB Rohdaten).
-- <=30 Kategorien je Themenraum, 10 Buchungstypen pro Themenraum.Das ist für die optimale Erfahrung.
+- Je Themenraum: <= 30 Kategorien, 10 Buchungstypen. 
 
 ## Installation
 
