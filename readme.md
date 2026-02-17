@@ -1,7 +1,6 @@
 # Themenbasierter KPI-Rechner über Zeiträume
 
-Interaktive Analyse von Kosten, Mengen, Erlösen und Ergebnissen über Jahre entlang eines konsistenten Wirkpfades  
-**Quelle → Buchungstyp → Kategorie → wirtschaftliches Resultat**
+OLAP light: Interaktive Analyse von Kosten, Mengen, Erlösen und Ergebnissen über Jahre entlang **Quelle → Buchungstyp → Kategorie → wirtschaftliches Resultat**
 
 **Einsatzbereich:** 
 - Projektanalysen
@@ -9,26 +8,19 @@ Interaktive Analyse von Kosten, Mengen, Erlösen und Ergebnissen über Jahre ent
 - Kennzahlenvergleiche
 - Ergebnisorientierte Auswertungen
 
-Das gibt es alles schon so irgendwie. Aber nicht so präzise und gleichzeitig **real. Für Menschen. 😎**
+Das gibt es alles schon so irgendwie. 
 
-![alt text](assets/example_legend01.png)
+Aber nicht so einfach und gleichzeitig **real. Für Menschen. 😎**
+
+![alt text](assets/legend_01.png)
 
 ## Vorteile/ Abgrenzung zu klassischen BI-Tools:
 
-### ✔ Strukturdisziplin
-Klare Trennung von Quelle, Typ und Kategorie erzwingt konsistente Modellbildung.
-
-### ✔ Transparente Wirklogik
-Ökonomische Bewegungen sind nachvollziehbar – nicht nur aggregiert.
-
-### ✔ Themenraum-Vergleich
-Mehrere CSV-Dateien können als getrennte, aber vergleichbare Modellräume analysiert werden.
-
-### ✔ Niedrige technische Einstiegshürde
-Keine Datenbank, keine ETL-Strecke – CSV genügt.
-
-### ✔ Explorative Validierung
-Strukturvisualisierung unterstützt Clusterprüfung und Modellkonsistenz.
+- ✔ Strukturdisziplin: Trennung von Quelle, Typ und Kategorie erzwingt konsistente Modellbildung.
+- ✔ Transparente Wirklogik: Ökonomische Bewegungen sind nachvollziehbar – nicht nur aggregiert.
+- ✔ Themenraum-Vergleich: Mehrere CSV-Dateien können als getrennte, aber vergleichbare Modellräume analysiert werden.
+- ✔ Niedrige technische Einstiegshürde: Keine Datenbank, keine ETL-Strecke – CSV genügt.
+- ✔ Explorative Validierung: Strukturvisualisierung für eigene Clusterprüfung und Modellkonsistenz.
 
 ## Datenmodell
 
