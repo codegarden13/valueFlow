@@ -1,6 +1,6 @@
 # Themenbasierter KPI-Rechner über Zeiträume
 
-OLAP light: Interaktive Analyse von Kosten, Mengen, Erlösen und Ergebnissen über Jahre entlang **Quelle → Buchungstyp → Kategorie → wirtschaftliches Resultat**
+Interaktive Analyse von Kosten, Mengen, Erlösen und Ergebnissen über Jahre entlang **Quelle → Buchungstyp → Kategorie → wirtschaftliches Resultat**
 
 **Einsatzbereich:** 
 - Projektanalysen
@@ -10,7 +10,7 @@ OLAP light: Interaktive Analyse von Kosten, Mengen, Erlösen und Ergebnissen üb
 
 Das gibt es alles schon so irgendwie. 
 
-Aber nicht so einfach und gleichzeitig **real. Für Menschen. 😎**
+Aber nicht so: **OLAP light für Menschen. 😎**
 
 ![alt text](assets/legend_01.png)
 
