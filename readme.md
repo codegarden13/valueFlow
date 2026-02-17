@@ -3,6 +3,7 @@
 Interaktive Analyse von Kosten, Mengen, Erlösen und Ergebnissen über Jahre entlang **Quelle → Buchungstyp → Kategorie → wirtschaftliches Resultat**
 
 **Einsatzbereich:** 
+
 - Projektanalysen
 - Investitionsbewertungen
 - Kennzahlenvergleiche
@@ -14,11 +15,11 @@ Aber nicht so: **OLAP light für Menschen. 😎**
 
 ![alt text](assets/legend_01.png)
 
-## Vorteile/ Abgrenzung zu klassischen BI-Tools:
+## Abgrenzung zu klassischen BI-Tools:
 
 - ✔ Strukturdisziplin: Trennung von Quelle, Typ und Kategorie erzwingt konsistente Modellbildung.
 - ✔ Transparente Wirklogik: Ökonomische Bewegungen sind nachvollziehbar – nicht nur aggregiert.
-- ✔ Themenraum-Vergleich: Mehrere CSV-Dateien können als getrennte und Modellräume analysiert werden.
+- ✔ Themenraum-Vergleich: CSV-Dateien können als getrennte oder gemeinsame Modellräüme analysiert werden.
 - ✔ Niedrige technische Einstiegshürde: Keine Datenbank, keine ETL-Strecke durch robustes CSV-Format.
 - ✔ Explorative Validierung: Strukturvisualisierung für eigene Clusterprüfung und Modellkonsistenz.
 
