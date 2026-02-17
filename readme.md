@@ -19,7 +19,7 @@ Aber nicht so: **OLAP light für Menschen. 😎**
 
 - ✔ Strukturdisziplin: Trennung von Quelle, Typ und Kategorie erzwingt konsistente Modellbildung.
 - ✔ Transparente Wirklogik: Ökonomische Bewegungen sind nachvollziehbar – nicht nur aggregiert.
-- ✔ Themenraum-Vergleich: CSV-Dateien können als getrennte oder gemeinsame Modellräüme analysiert werden.
+- ✔ Themenraum-Vergleich: CSV-Dateien können als getrennte oder gemeinsame Modellräume analysiert werden.
 - ✔ Niedrige technische Einstiegshürde: Keine Datenbank, keine ETL-Strecke durch robustes CSV-Format.
 - ✔ Explorative Validierung: Strukturvisualisierung für eigene Clusterprüfung und Modellkonsistenz.
 
