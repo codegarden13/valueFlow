@@ -138,6 +138,13 @@ export function wireFilterDropdowns(ctx) {
   if (!ctx?.state) throw new Error("wireFilterDropdowns: ctx.state missing");
   if (!ctx?.dom) throw new Error("wireFilterDropdowns: ctx.dom missing");
 
+  // Idempotenz: UI-Wiring darf NICHT mehrfach passieren (sonst Redraw-/Transition-Stürme).
+  // Falls initUI / wire* versehentlich mehrfach aufgerufen wird, verhindern wir doppelte Listener.
+  if (ctx.__uiWiredFilterDropdowns_v1) {
+    return ctx.__uiWiringApiFilterDropdowns_v1;
+  }
+  ctx.__uiWiredFilterDropdowns_v1 = true;
+
   const rr = typeof ctx.requestRedraw === "function" ? ctx.requestRedraw : null;
 
   // ---------------------------------------------------------------------------
@@ -193,8 +200,8 @@ export function wireFilterDropdowns(ctx) {
     setAllCats();
   });
 
-  // API für Renderer
-  return {
+  // API für Renderer (wird auf ctx gecached, damit Re-Wiring stabil bleibt)
+  const api = {
     renderOptions(options) {
       if (!options) throw new Error("UI: renderOptions without options");
       const { sources, types, cats } = options;
@@ -289,38 +296,115 @@ export function wireFilterDropdowns(ctx) {
       });
     },
   };
+
+  ctx.__uiWiringApiFilterDropdowns_v1 = api;
+  return api;
 }
 
 // =============================================================================
 // 5) Year Range + Mode
 // =============================================================================
 
-
 export function wireModeAndYears(ctx) {
-  const modeEl = ctx?.dom?.modeSelect;
+  if (!ctx?.state) throw new Error("wireModeAndYears: ctx.state missing");
+  if (!ctx?.dom) throw new Error("wireModeAndYears: ctx.dom missing");
+
+  // Idempotenz: verhindert mehrfach registrierte Listener (führt sonst zu Zittern/Redraw-Loops).
+  if (ctx.__uiWiredModeAndYears_v1) return;
+  ctx.__uiWiredModeAndYears_v1 = true;
+
+  const rr = typeof ctx.requestRedraw === "function" ? ctx.requestRedraw : null;
+
+  // ---------------------------------------------------------------------------
+  // Mode
+  // ---------------------------------------------------------------------------
+  const modeEl = ctx.dom.modeSelect;
   if (modeEl) {
     modeEl.addEventListener("change", () => {
+      // State = User-Intent (Renderer entscheidet über Darstellung)
       ctx.state.mode = modeEl.value === "menge" ? "menge" : "kosten";
-      ctx.requestRedraw?.(ctx);
+      rr?.(ctx);
     });
   }
 
-  const fromEl = ctx?.dom?.yearFromInput;
-  const toEl = ctx?.dom?.yearToInput;
+  // ---------------------------------------------------------------------------
+  // Year range
+  // Contract:
+  // - input  : live state update (scrubbing), KEIN redraw hier
+  // - commit : einmal redraw (on release / commit)
+  // - invariant: yearFrom <= yearTo
+  // ---------------------------------------------------------------------------
+  const fromEl = ctx.dom.yearFromInput;
+  const toEl = ctx.dom.yearToInput;
   if (!fromEl || !toEl) return;
+
+  // Helper: clamp to current DOM min/max if present
+  const clampToDom = (v, el) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return n;
+    const min = Number(el.min);
+    const max = Number(el.max);
+    let out = n;
+    if (Number.isFinite(min)) out = Math.max(min, out);
+    if (Number.isFinite(max)) out = Math.min(max, out);
+    return out;
+  };
+
+  const normalizeYears = () => {
+    let yf = clampToDom(fromEl.value, fromEl);
+    let yt = clampToDom(toEl.value, toEl);
+
+    if (!Number.isFinite(yf)) yf = Number(ctx.state.yearFrom);
+    if (!Number.isFinite(yt)) yt = Number(ctx.state.yearTo);
+
+    // Swap if crossed
+    if (Number.isFinite(yf) && Number.isFinite(yt) && yf > yt) {
+      const tmp = yf;
+      yf = yt;
+      yt = tmp;
+    }
+
+    if (Number.isFinite(yf)) ctx.state.yearFrom = Math.trunc(yf);
+    if (Number.isFinite(yt)) ctx.state.yearTo = Math.trunc(yt);
+  };
+
+  const markScrubbing = () => {
+    // Renderer/Timing können dies nutzen, um Animation während Drag zu deaktivieren.
+    ctx.state.isScrubbingYears = true;
+  };
+
+  const commit = () => {
+    ctx.state.isScrubbingYears = false;
+    normalizeYears();
+    rr?.(ctx);
+  };
 
   // Live state update while dragging (no redraw storm)
   fromEl.addEventListener("input", () => {
-    ctx.state.yearFrom = Number(fromEl.value);
+    markScrubbing();
+    ctx.state.yearFrom = Math.trunc(clampToDom(fromEl.value, fromEl));
   });
 
   toEl.addEventListener("input", () => {
-    ctx.state.yearTo = Number(toEl.value);
+    markScrubbing();
+    ctx.state.yearTo = Math.trunc(clampToDom(toEl.value, toEl));
   });
 
-  // Commit on release
-  fromEl.addEventListener("change", () => ctx.requestRedraw?.(ctx));
-  toEl.addEventListener("change", () => ctx.requestRedraw?.(ctx));
+  // Commit on release / commit
+  // Note: bei type=range feuert change i.d.R. beim Loslassen;
+  // bei type=number eher bei Blur/Enter (immer noch ok).
+  fromEl.addEventListener("change", commit);
+  toEl.addEventListener("change", commit);
+
+  // Zusätzliche Commit-Signale für "release" (robust gegen unterschiedliche Input-Typen)
+  fromEl.addEventListener("pointerup", commit);
+  toEl.addEventListener("pointerup", commit);
+  fromEl.addEventListener("keyup", (e) => {
+    if (e.key === "Enter") commit();
+  });
+  toEl.addEventListener("keyup", (e) => {
+    if (e.key === "Enter") commit();
+  });
 }
 
 // =============================================================================

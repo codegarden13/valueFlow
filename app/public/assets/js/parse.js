@@ -199,11 +199,20 @@ function parseRows(rawLines, delimiter, cols) {
     const memoRaw = cleanText(cell(parts, cols.iMemo));
 
     // Betrag required (strict)
+    // Semantik:
+    // - Standard: Betrag ist der Gesamtbetrag
+    // - Wenn Menge + Einheit existieren, interpretieren wir Betrag als *Preis pro Einheit*
+    //   und rechnen den Gesamtbetrag als Betrag * Menge.
     const betragNum = parseNumberStrict(betragRaw);
     if (!Number.isFinite(betragNum)) continue;
 
     // Menge optional
     const mengeNum = cols.iMenge >= 0 ? parseNumberStrict(mengeRaw) : NaN;
+
+    // Gesamtbetrag ableiten, wenn Menge + Einheit vorhanden sind
+    const hasUnit = cols.iEinheit >= 0 && cleanText(einheitRaw).length > 0;
+    const hasQty = Number.isFinite(mengeNum);
+    const kostenNum = hasUnit && hasQty ? betragNum * mengeNum : betragNum;
 
     // Undated detection: undated only if Jahr, Von, Bis are ALL empty
     const hasAnyDate = !!jahrRaw || !!von || !!bis;
@@ -234,7 +243,7 @@ function parseRows(rawLines, delimiter, cols) {
       cat,         // Kategorie
       typ,         // Buchungstyp
       kostenart,   // Kostenart (info)
-      kosten: betragNum,
+      kosten: kostenNum,
       menge: mengeNum,
       einheit: cleanText(einheitRaw),
       status,

@@ -7,6 +7,7 @@
 //   - Normalisierung / Parsing-Utilities
 //   - Invariants (clamp) für Sets
 //   - Helper um Default-State aus cfg abzuleiten
+//   - state enthält enabled* Sets (empty == alle) und optional disabledCats für inverse-Selection UX
 //
 // WICHTIG:
 // - Reload => Default-Zustand ("alles").
@@ -63,7 +64,7 @@ export function normalizeEnabledCats(state, cats) {
   if (!state) return;
 
   const list = Array.isArray(cats) ? cats : [];
-  const available = new Set(list.map(cleanKey).filter(Boolean));
+  const available = new Set(list.map((x) => String(x ?? "").trim()).filter(Boolean));
 
   const cur = state.enabledCats instanceof Set ? state.enabledCats : new Set();
 
@@ -75,7 +76,7 @@ export function normalizeEnabledCats(state, cats) {
 
   const next = new Set();
   for (const c of cur) {
-    const k = cleanKey(c);
+    const k = String(c ?? "").trim();
     if (k && available.has(k)) next.add(k);
   }
 
@@ -106,6 +107,31 @@ export function normalizeEnabledSet(enabledSet, universe) {
   return next;
 }
 
+/**
+ * Generic clamp für "disabled" Sets (inverse Auswahl):
+ * disabled := disabled ∩ universe
+ *
+ * Semantik:
+ * - disabled ist NIE "alle"; empty Set bedeutet "nichts explizit abgewählt"
+ * - wird nur gegen das stabile Universum geklemmt (NICHT gegen aktuelle View/InRange),
+ *   damit Abwahlen Filterwechsel überleben.
+ */
+export function normalizeDisabledSet(disabledSet, universe) {
+  const all = Array.isArray(universe)
+    ? universe.map((x) => String(x ?? "").trim()).filter(Boolean)
+    : [];
+  const u = new Set(all);
+
+  const cur = disabledSet instanceof Set ? disabledSet : new Set();
+
+  const next = new Set();
+  for (const v of cur) {
+    const k = String(v ?? "").trim();
+    if (k && u.has(k)) next.add(k);
+  }
+  return next;
+}
+
 // ============================================================================
 // 4) Default-State (ohne Persistenz)
 // ============================================================================
@@ -125,6 +151,7 @@ export function createDefaultState(cfg) {
     enabledSourceIds: new Set(), // alle
     enabledTypes: new Set(),     // alle
     enabledCats: new Set(),      // alle
+    disabledCats: new Set(),     // inverse Auswahl: explizit abgewählt (persistiert über Filter)
   };
 }
 

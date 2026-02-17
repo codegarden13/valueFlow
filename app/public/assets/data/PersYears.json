@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0.0",
+  "profile": {
+    "profile_id": "thomas",
+    "display_name": "Thomas Salomon"
+  },
+  "years": {
+
+    "2018": {
+      "memo": "Insolvenz ab Q3. Kdg Vertragsende 12.2024.",
+      "employers": [
+        {
+          "company_name": "Muster GmbH",
+          "employment_from": "2018-03-01",
+          "employment_to": "2020-09-30",
+          "position": "Projektleiter"
+        },
+        {
+          "company_name": "Beispiel AG",
+          "employment_from": "2020-10-01",
+          "employment_to": null,
+          "position": "Senior Consultant"
+        }
+      ]
+    },
+
+    "2024": {
+      "memo": "Insolvenz ab Q3. Kdg Vertragsende 12.2024.",
+      "employers": [
+        {
+          "company_name": "Muster GmbH",
+          "employment_from": "2018-03-01",
+          "employment_to": "2020-09-30",
+          "position": "Projektleiter"
+        },
+        {
+          "company_name": "Beispiel AG",
+          "employment_from": "2020-10-01",
+          "employment_to": null,
+          "position": "Senior Consultant"
+        }
+      ]
+    }
+  }
+}

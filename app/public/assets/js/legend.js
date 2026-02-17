@@ -84,13 +84,28 @@ function uniqueCatsPreserveOrder(cats) {
 }
 
 function getHighlightCat(state) {
-  const v =
-    state?.legendHighlightCat ??
-    state?.highlightedCategory ??
-    state?.hoverCat ??
-    state?.haloCat;
-
+  const v = state?.legendHighlightCat;
   return typeof v === "string" && v.length ? v : null;
+}
+
+
+function getHighlightYear(state, fallback) {
+  const v = state?.legendHighlightYear;
+  if (v == null || String(v).trim() === "") return fallback ?? null;
+  return v;
+}
+
+// -----------------------------------------------------------------------------
+// Normalize highlight payloads for public API
+// -----------------------------------------------------------------------------
+function normalizeHighlightPayload(p) {
+  const raw = p && typeof p === "object" ? p : {};
+  const cat = typeof raw.cat === "string" && raw.cat.length ? raw.cat : (raw.cat == null ? null : String(raw.cat));
+  const year = raw.yearKey ?? raw.year ?? raw.highlightedYear ?? null;
+  return {
+    cat: cat && String(cat).trim() ? String(cat).trim() : null,
+    year: year != null && String(year).trim() !== "" ? year : null,
+  };
 }
 
 function ensureArrowMarkers(svg) {
@@ -153,6 +168,8 @@ export function renderLegend({
   catTotals,
   typeTotals,
   sourceTotals,
+  catYearSpan,
+  highlightedYear,
   graph,
 } = {}) {
   if (!mountEl) throw new Error("renderLegend: mountEl missing");
@@ -161,6 +178,7 @@ export function renderLegend({
   assertMap("catTotals", catTotals);
   assertMap("typeTotals", typeTotals, true);
   assertMap("sourceTotals", sourceTotals);
+  assertMap("catYearSpan", catYearSpan, true);
 
   if (!graph || typeof graph !== "object") {
     throw new Error("renderLegend: graph missing/invalid");
@@ -247,6 +265,8 @@ export function renderLegend({
     onToggle,
     usedNodeIds,
     highlightedCat,
+    catYearSpan,
+    highlightedYear: getHighlightYear(state, highlightedYear),
   });
 
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -303,14 +323,62 @@ export function renderLegend({
       startHiPath.setAttribute("stroke", "none");
     }
 
-    // 1) Chips: dataset.highlight + glow variable
+
+    const upsertMeta = (chipEl, isHi) => {
+      // legend-render.js outputs:
+      // <span class="legend-chip__label">
+      //   <span class="legend-chip__title">...</span>
+      //   <span class="legend-chip__meta">...</span>   (only when active)
+      // </span>
+      const labelEl = chipEl.querySelector(".legend-chip__label");
+      if (!labelEl) return;
+
+      // Remove existing meta first
+      const existing = labelEl.querySelector(":scope > .legend-chip__meta");
+      if (existing) existing.remove();
+
+      if (!isHi) return;
+
+      // Title meta shows only the full existence range: `min - max`.
+      const cat = chipEl.dataset.cat;
+      const spanRaw = catYearSpan?.get?.(cat);
+
+      let span = null;
+      if (Array.isArray(spanRaw) && spanRaw.length >= 2) {
+        span = { min: Number(spanRaw[0]), max: Number(spanRaw[1]) };
+      } else if (spanRaw && typeof spanRaw === "object" && ("min" in spanRaw || "max" in spanRaw)) {
+        span = { min: Number(spanRaw.min), max: Number(spanRaw.max) };
+      }
+
+      const min = span && Number.isFinite(span.min) ? span.min : null;
+      const max = span && Number.isFinite(span.max) ? span.max : null;
+
+      let text = "";
+      if (min != null && max != null) text = min === max ? String(min) : `${min} - ${max}`;
+      else if (min != null) text = String(min);
+      else if (max != null) text = String(max);
+
+      if (!text) return;
+
+      // Ensure visible separation even if CSS gap is missing.
+      labelEl.appendChild(document.createTextNode(" "));
+
+      const metaEl = document.createElement("span");
+      metaEl.className = "legend-chip__meta";
+      metaEl.textContent = text;
+      labelEl.appendChild(metaEl);
+    };
+
     for (const el of nodeElById.values()) {
       if (!el.classList.contains("legend-node--cat")) continue;
-      const c = el.dataset.cat || el.dataset.category || "";
+      const c = el.dataset.cat || "";
       const isHi = !!next && c === next;
       el.dataset.highlight = isHi ? "true" : "false";
       if (isHi && glowColor) el.style.setProperty("--legend-glow", glowColor);
       else el.style.removeProperty("--legend-glow");
+
+      // Update year meta only for highlighted chip
+      upsertMeta(el, isHi);
     }
 
     // 2) Links: set data-highlight + color
@@ -372,11 +440,19 @@ export function renderLegend({
   };
 
   if (!mountEl.__legendHighlightBound) {
-    const onHi = (ev) => applyHighlight(ev?.detail?.cat ?? null);
+    const onHi = (ev) => {
+      const detail = ev?.detail || {};
+      if (state && typeof state === "object") {
+        // Allow external hover/selection to drive the current year.
+        if (detail.year != null && String(detail.year).trim() !== "") {
+          state.legendHighlightYear = detail.year;
+        }
+      }
+      applyHighlight(detail.cat ?? null);
+    };
 
     mountEl.addEventListener("legend:highlight", onHi);
     mountEl.addEventListener("legend:clearHighlight", () => applyHighlight(null));
-    document.addEventListener("legend:highlight", onHi);
 
     mountEl.__legendHighlightBound = true;
   }
@@ -415,4 +491,55 @@ export function renderLegend({
 
   // Apply highlight again after simulation is created, so the first highlight also recenters.
   applyHighlight(highlightedCat);
+
+  // ---------------------------------------------------------------------------
+  // Public Legend API (imperative bridge)
+  // ---------------------------------------------------------------------------
+  // Contract:
+  // - renderer.js may call `mountEl.__legendApi.updateHighlight({cat, yearKey})`
+  //   to drive legend highlight without depending on internal DOM structure.
+  // - This API is overwritten on every renderLegend call to keep closures fresh.
+  // - Event-driven interop remains the primary mechanism; API uses the same
+  //   events for compatibility with other listeners.
+  const api = {
+    /**
+     * Update highlight state.
+     * @param {{cat?: string|null, yearKey?: any, year?: any, highlightedYear?: any}|null} payload
+     */
+    updateHighlight(payload) {
+      const { cat, year } = normalizeHighlightPayload(payload);
+
+      // Persist year into shared state so chips can render meta.
+      if (state && typeof state === "object") {
+        if (year != null) state.legendHighlightYear = year;
+      }
+
+      // Drive local highlight immediately.
+      applyHighlight(cat);
+
+      // Also broadcast for other components (keeps legacy/event-based consumers in sync).
+      try {
+        mountEl.dispatchEvent(new CustomEvent("legend:highlight", { detail: { cat, year } }));
+      } catch {}
+    },
+
+    /** Clear highlight state. */
+    clearHighlight() {
+      if (state && typeof state === "object") {
+        state.legendHighlightCat = null;
+      }
+      applyHighlight(null);
+      try {
+        mountEl.dispatchEvent(new CustomEvent("legend:clearHighlight"));
+      } catch {}
+    },
+
+    /** Debug hook (non-contractual). */
+    _debug: { nodeElById, linkSel },
+  };
+
+  // Single source of truth: renderer looks up the API here.
+  mountEl.__legendApi = api;
+
+  return api;
 }

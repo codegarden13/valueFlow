@@ -109,11 +109,35 @@ export function ensureLegendHalo(rootEl) {
   /** @type {string|null} */
   let activeCat = null;
 
+  // ---------------------------------------------------------------------------
+  // Jitter guard
+  // ---------------------------------------------------------------------------
+  // Problem: Consumers may call `halo.show()` at high frequency (mousemove, drag,
+  // redraw loops). Re-starting the Web-Animation on every call produces visible
+  // nervous flicker/jitter and can keep the pill in a perpetual "re-pulsing"
+  // state.
+  //
+  // Strategy:
+  // - If the target element did not change and the visual parameters are stable,
+  //   we do NOT restart the pulse.
+  // - We allow a pulse again after a small cooldown window.
+  let lastShowTs = 0;
+  let lastVisualKey = "";
+  const PULSE_COOLDOWN_MS = 220;
+
   const prevStyleByEl = new WeakMap();
 
   // ---------------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------------
+
+  function visualKeyFrom(opts) {
+    const s = clamp(opts?.strength ?? 0.85, 0.1, 1);
+    const c = String(opts?.color ?? "rgba(255,255,255,0.9)");
+    // Round strength to avoid tiny float differences from upstream.
+    const sr = Math.round(s * 100) / 100;
+    return `${sr}::${c}`;
+  }
 
   function resolveTarget(opts) {
     const direct = opts?.el || opts?.targetEl;
@@ -170,6 +194,9 @@ export function ensureLegendHalo(rootEl) {
 
     activeEl = null;
 
+    lastShowTs = 0;
+    lastVisualKey = "";
+
     // broadcast semantic highlight clear if we had one
     if (activeCat != null) {
       activeCat = null;
@@ -177,9 +204,27 @@ export function ensureLegendHalo(rootEl) {
     }
   }
 
-  function applyGlow(el, { strength, color }) {
+  function applyGlow(el, { strength, color, visualKey }) {
     const s = clamp(strength ?? 0.85, 0.1, 1);
     const c = String(color ?? "rgba(255,255,255,0.9)");
+
+    // Jitter guard: avoid re-starting the pulse if we are called repeatedly with
+    // the same element + same visual params within a short time window.
+    const now = performance.now();
+    const vKey = String(visualKey || "");
+    if (activeEl === el && vKey && vKey === lastVisualKey && now - lastShowTs < PULSE_COOLDOWN_MS) {
+      // Still update stable styles (keeps glow "on"), but do not restart animation.
+      // This makes halo.show() safe to call on every mousemove.
+      Object.assign(el.style, {
+        isolation: "isolate",
+        willChange: "filter, box-shadow",
+        zIndex: "4",
+      });
+      return;
+    }
+
+    lastShowTs = now;
+    lastVisualKey = vKey;
 
     const blur = 8 + 22 * s;
     const blur2 = Math.round(blur * 1.35);
@@ -247,6 +292,8 @@ export function ensureLegendHalo(rootEl) {
         clearActive("switch");
       }
 
+      // NOTE: `applyGlow` contains a jitter-guard so `show()` can be called at
+      // high frequency without re-starting the pulse animation continuously.
       rememberStyle(pill);
       activeEl = pill;
 
@@ -257,7 +304,8 @@ export function ensureLegendHalo(rootEl) {
         dispatchHighlight(rootEl, cat, pill, "show");
       }
 
-      applyGlow(pill, { strength: opts.strength, color: opts.color });
+      const vKey = visualKeyFrom(opts);
+      applyGlow(pill, { strength: opts.strength, color: opts.color, visualKey: vKey });
       return true;
     },
 

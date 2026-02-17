@@ -34,6 +34,7 @@ import { createBarHoverController } from "./barHoverController.js";
 import { syncUIFromState, renderSubtitle } from "./ui.js";
 import { buildLegendGraph } from "./graphBuilder.js";
 import { buildColorByCat } from "./colorsByCat.js";
+import { renderDerivedIntoDom } from "./renderGenTables.js";
 
 // -----------------------------------------------------------------------------
 // Pure Helper (Renderer-intern)
@@ -205,35 +206,18 @@ function getHoverUX(ctx) {
       return;
     }
 
-    // Fallback: re-render ONLY legend (no computeDerived, no chart)
-    const d = ctx.derived;
-    if (!d?.view || !d?.graph || !d?.aggregates || !(d.colorByCat instanceof Map)) return;
-
-    const viewCatsRaw = d.view.cats || [];
-    assertStringArray("view.cats", viewCatsRaw);
-    const legendCats = dedupeStable(viewCatsRaw.slice());
-
-    renderLegend({
-      mountEl: legendEl,
-      cats: legendCats,
-      state: ctx.state,
-      colorByCat: d.colorByCat,
-      catTotals: d.aggregates.totalsByCat,
-      sourceTotals: d.aggregates.totalsBySource,
-      graph: d.graph,
-      onToggle: (catKey, checked) => {
-        if (typeof catKey !== "string" || !catKey.length) {
-          throw new Error("legend/onToggle: catKey must be non-empty string");
-        }
-        if (checked) ctx.state.disabledCats.delete(catKey);
-        else ctx.state.disabledCats.add(catKey);
-        ctx.requestRedraw(ctx);
-      },
-    });
+    // Strict: legend must expose an incremental highlight API.
+    throw new Error("applyLegendHighlight: legendEl.__legendApi.updateHighlight missing (fallback disabled)");
   }
 
   function onLegendHighlight(e) {
     const cat = e?.detail?.cat ?? null;
+    const year = e?.detail?.year ?? null;
+
+    // Persist hovered year (string/number) so legend can render `minYear–activeYear`.
+    if (year != null && String(year).trim() !== "") {
+      ctx.state.legendHighlightYear = year;
+    }
 
     // De-dupe hard (avoid loops + repaint storms)
     if (cat === lastAppliedCat) return;
@@ -272,7 +256,7 @@ function getHoverUX(ctx) {
 // ---------------------------------------------------------------------------
 // computeDerived(ctx) – STRICT / Option A
 // - Categories are identities (no normalization beyond required string checks)
-// - Types may be normalized via cleanKey
+// - Types are normalized via cleanKey
 // - View is year-filtered; Legend graph includes undated regardless of year-range
 // - Planned relations are legend-only and MUST NOT affect bars/totals
 // - NEW: colorByCat is a single source of truth (Chart + Legend) and MUST be stable
@@ -409,33 +393,39 @@ async function computeDerived(ctx) {
   // 3a) Dropdown universe for current year-range (DATED bars only)
   //     - do NOT overwrite options.universe
   // -------------------------------------------------------------------------
-  const computeUniverseForYearRange = (model, state) => {
-    const yf = Number(state.yearFrom);
-    const yt = Number(state.yearTo);
+  const computeUniverseForYearRange = (model, state, enabledTypesSet) => {
+  const yf = Number(state.yearFrom);
+  const yt = Number(state.yearTo);
 
-    const types = new Set();
-    const cats = new Set();
+  const types = new Set();
+  const cats = new Set();
 
-    for (const b of model?.bars || []) {
-      const y = Number(b?.year);
-      if (!Number.isFinite(y)) continue;
-      if (Number.isFinite(yf) && y < yf) continue;
-      if (Number.isFinite(yt) && y > yt) continue;
+  for (const b of model?.bars || []) {
+    const y = Number(b?.year);
+    if (!Number.isFinite(y)) continue;
+    if (Number.isFinite(yf) && y < yf) continue;
+    if (Number.isFinite(yt) && y > yt) continue;
 
-      const t = cleanKey(b?.type ?? b?.typ);
-      const c = b?.cat; // Option A identity
+    const t = cleanKey(b?.type ?? b?.typ);
+    const c = b?.cat; // Option A identity
 
-      if (t) types.add(t);
-      if (typeof c === "string" && c.length) cats.add(c);
-    }
+    // Typ-Universe bleibt "alle Typen im Range" (damit man wieder re-aktivieren kann)
+    if (t) types.add(t);
 
-    return {
-      types: Array.from(types).sort((a, b) => a.localeCompare(b, "de")),
-      cats: Array.from(cats).sort((a, b) => a.localeCompare(b, "de")),
-    };
+    // Kategorienliste soll Quelle+Typ+YearRange respektieren
+    if (t && enabledTypesSet instanceof Set && !enabledTypesSet.has(t)) continue;
+
+    if (typeof c === "string" && c.length) cats.add(c);
+  }
+
+  return {
+    types: Array.from(types).sort((a, b) => a.localeCompare(b, "de")),
+    cats: Array.from(cats).sort((a, b) => a.localeCompare(b, "de")),
   };
+};
 
-  const uni = computeUniverseForYearRange(mergedSelected, ctx.state);
+  //const uni = computeUniverseForYearRange(mergedSelected, ctx.state);
+  const uni = computeUniverseForYearRange(mergedSelected, ctx.state, enabledTypes);
 
   options.inRange.types = uni.types.length ? uni.types : options.universe.types.slice();
   options.inRange.cats  = uni.cats.length  ? uni.cats  : options.universe.cats.slice();
@@ -460,9 +450,10 @@ async function computeDerived(ctx) {
   assertStringArray("visibleCats", rawVisibleCats);
   const visibleCats = dedupeStable(rawVisibleCats.slice());
 
-  // Clamp disabledCats to visibleCats (Option A identity)
+  // Clamp disabledCats ONLY to universe (persist user intent across filters)
+  const universeCatsSet = new Set(options.universe.cats);
   for (const c of Array.from(ctx.state.disabledCats)) {
-    if (!visibleCats.includes(c)) ctx.state.disabledCats.delete(c);
+    if (!universeCatsSet.has(c)) ctx.state.disabledCats.delete(c);
   }
 
   const enabledCats = visibleCats.filter((c) => !ctx.state.disabledCats.has(c));
@@ -485,12 +476,10 @@ async function computeDerived(ctx) {
 
   const aggregates = aggregate({ rows }, ctx.state);
 
-  // Deterministic clamp disabledCats against current slice
-  if (ctx.state.disabledCats instanceof Set && Array.isArray(aggregates?.visibleCats)) {
-    const vis = new Set(aggregates.visibleCats);
-    for (const c of Array.from(ctx.state.disabledCats)) {
-      if (!vis.has(c)) ctx.state.disabledCats.delete(c);
-    }
+  // Keep disabledCats stable across slices; only clamp to universe
+  const universeCatsSet2 = new Set(options.universe.cats);
+  for (const c of Array.from(ctx.state.disabledCats)) {
+    if (!universeCatsSet2.has(c)) ctx.state.disabledCats.delete(c);
   }
 
   // -------------------------------------------------------------------------
@@ -641,6 +630,8 @@ async function computeDerived(ctx) {
       phase = setPhase(ctx, "computeDerived");
       await computeDerived(ctx);
       if (!ctx.derived) throw new Error("redraw: ctx.derived missing after computeDerived");
+      // CTX-Tab: derived als sortierbare Tabelle (Debug/Transparenz)
+      renderDerivedIntoDom(ctx);
 
       const { options, view, graph, aggregates, colorByCat } = ctx.derived;
 
@@ -692,6 +683,8 @@ syncUI(ctx, uiOptions);
       if (!view || isModelEmpty(view)) {
         phase = setPhase(ctx, "renderNoData");
         renderNoDataForFilterState(ctx);
+        // CTX-Tab: keep CTX table fresh even when chart is empty
+        renderDerivedIntoDom(ctx);
         return;
       }
 
@@ -734,8 +727,51 @@ syncUI(ctx, uiOptions);
       assertStringArray("view.cats", viewCatsRaw);
       const legendCats = dedupeStable(viewCatsRaw.slice());
 
+      // ---------------------------------------------------------------------
+      // Category year span (min/max year per category)
+      // ---------------------------------------------------------------------
+      // Needed for legend active chip meta: `firstYear–activeYear`.
+      // IMPORTANT:
+      // - We respect enabled sources + enabled types.
+      // - We intentionally do NOT clamp to the current visible year range;
+      //   span is computed across all years present in the data.
+
+      const enabledSources =
+        ctx.state.enabledSourceIds instanceof Set && ctx.state.enabledSourceIds.size
+          ? new Set(ctx.state.enabledSourceIds)
+          : new Set(options.sources);
+
+      const enabledTypes =
+        ctx.state.enabledTypes instanceof Set && ctx.state.enabledTypes.size
+          ? new Set(ctx.state.enabledTypes)
+          : new Set(options.universe.types);
+
+      const catYearSpan = new Map(); // cat -> {min,max}
+
+      for (const [sid, entry] of ctx.raw.bySource.entries()) {
+        if (!enabledSources.has(sid)) continue;
+        const bars = Array.isArray(entry?.model?.bars) ? entry.model.bars : [];
+
+        for (const b of bars) {
+          const y = Number(b?.year);
+          if (!Number.isFinite(y)) continue; // ignore undated
+
+          const t = cleanKey(b?.type ?? b?.typ);
+          if (!t || !enabledTypes.has(t)) continue;
+
+          const c = b?.cat; // Option A identity
+          if (typeof c !== "string" || !c.length) continue;
+
+          const cur = catYearSpan.get(c);
+          if (!cur) catYearSpan.set(c, { min: y, max: y });
+          else catYearSpan.set(c, { min: Math.min(cur.min, y), max: Math.max(cur.max, y) });
+        }
+      }
+
+      // Current year from hover/selection (set by barHoverController -> legend:highlight -> state)
+      const highlightedYear = ctx.state.legendHighlightYear ?? null;
+
       phase = setPhase(ctx, "renderLegend");
-      
 
       renderLegend({
         mountEl: dom.legendEl,
@@ -745,6 +781,8 @@ syncUI(ctx, uiOptions);
         catTotals: aggregates.totalsByCat,
         sourceTotals: aggregates.totalsBySource,   // summen auf den sourcenodes
         graph,
+        catYearSpan,
+        highlightedYear,
         onToggle: (catKey, checked) => {
           if (typeof catKey !== "string" || !catKey.length) {
             throw new Error("redraw/onToggle: catKey must be non-empty string");

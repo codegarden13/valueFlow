@@ -22,7 +22,6 @@
 
 import { createLegendHalo } from "./renderLegendHalo.js";
 
-
 function isEl(v) {
   return v && typeof v === "object" && v.nodeType === 1;
 }
@@ -58,25 +57,11 @@ function normalizePayload(payload) {
   const p = payload && typeof payload === "object" ? payload : {};
   const event = p.event || p.e || p.mouseEvent || null;
 
-  const cat = toStr(p.cat ?? p.category ?? p.kategorie ?? p.kat ?? p?.bar?.cat ?? p?.bar?.category);
-  const color = toStr(p.color ?? p.fill ?? p.stroke ?? p?.bar?.color ?? p?.bar?.fill);
-
-  const yearKey = toStr(
-    p.yearKey ?? p.year ?? p.jahr ?? p?.bar?.yearKey ?? p?.bar?.year ?? p?.bar?.jahr ?? p?.bar?.x
-  );
-
-  const typ = toStr(
-    p.typ ?? p.type ?? p?.bar?.typ ?? p?.bar?.type
-  );
-
-  const chipEl = pickFirst(
-    p.chipEl,
-    p.legendPillEl,
-    p?.dom?.chipEl,
-    p?.dom?.legendPillEl,
-    p?.nodes?.chipEl,
-    p?.nodes?.legendPillEl
-  );
+  const cat = toStr(p.cat ?? p?.bar?.cat);
+  const color = toStr(p.color ?? p?.bar?.color ?? p?.bar?.fill);
+  const yearKey = toStr(p.yearKey ?? p?.bar?.yearKey ?? p?.bar?.year ?? p?.bar?.x);
+  const typ = toStr(p.typ ?? p?.bar?.typ ?? p?.bar?.type);
+  const chipEl = pickFirst(p.chipEl, p?.dom?.chipEl, p?.nodes?.chipEl);
 
   return {
     event: event && typeof event === "object" ? event : null,
@@ -100,17 +85,11 @@ function defaultGetPillEl({ legendRootEl, cat }) {
   const esc = (s) => CSS.escape(String(s));
 
   // Try data attributes first
-  const byData = legendRootEl.querySelector(
-    `[data-cat="${esc(cat)}"], [data-category="${esc(cat)}"], [data-kategorie="${esc(cat)}"]`
-  );
+  const byData = legendRootEl.querySelector(`[data-cat="${esc(cat)}"]`);
   if (isEl(byData)) return byData;
 
-  // Try aria-label/title matches (fallback)
-  const byAria = legendRootEl.querySelector(`[aria-label="${esc(cat)}"], [title="${esc(cat)}"]`);
-  if (isEl(byAria)) return byAria;
-
   // Last resort: strict textContent match inside pill-ish elements
-  const candidates = legendRootEl.querySelectorAll("button, a, .pill, .legend-pill, .legend__pill, .badge, span, div");
+  const candidates = legendRootEl.querySelectorAll(".legend-node--cat, .legend-chip");
   for (const el of candidates) {
     const t = (el.textContent || "").trim();
     if (t === cat) return el;
@@ -135,6 +114,28 @@ function getLocalPoint(legendRootEl, event) {
     x: cx - r.left,
     y: cy - r.top,
   };
+}
+
+function dispatchLegendEvent(rootEl, type, detail) {
+  if (!isEl(rootEl)) return;
+  try {
+    rootEl.dispatchEvent(new CustomEvent(type, { detail }));
+  } catch {
+    // ignore (older environments)
+  }
+}
+
+function broadcastHighlight(legendRootEl, { cat, yearKey }) {
+  const c = toStr(cat);
+  const y = toStr(yearKey);
+  dispatchLegendEvent(legendRootEl, "legend:highlight", {
+    cat: c || null,
+    year: y || null,
+  });
+}
+
+function broadcastClear(legendRootEl) {
+  dispatchLegendEvent(legendRootEl, "legend:clearHighlight", {});
 }
 
 /**
@@ -172,8 +173,8 @@ export function createBarHoverController({
   }
 
   function resolveCat(chipEl, n) {
-    // prefer semantic payload; fallback to DOM dataset
-    return n.cat || (isEl(chipEl) ? (chipEl.dataset?.cat || "") : "");
+    // Prefer semantic payload; fallback to DOM dataset.
+    return n.cat || (isEl(chipEl) ? chipEl.dataset?.cat || "" : "");
   }
 
   function resolveSlice(n) {
@@ -199,7 +200,9 @@ export function createBarHoverController({
 
   function clear() {
     lastCacheKey = "";
-    halo.hide();          // also broadcasts legend:highlight {cat:null}
+    // Visual halo cleanup + semantic clear.
+    halo.hide(); // also broadcasts legend:highlight {cat:null}
+    broadcastClear(legendRootEl);
     emitHover(null);
   }
 
@@ -216,9 +219,7 @@ export function createBarHoverController({
       return;
     }
 
-    const chipEl =
-      n.chipEl ||
-      resolvePill({ legendRootEl, cat: n.cat, payload: n.raw, event: n.event });
+    const chipEl = n.chipEl || resolvePill({ legendRootEl, cat: n.cat, payload: n.raw, event: n.event });
 
     const color = resolveColor({
       color: n.color,
@@ -234,12 +235,15 @@ export function createBarHoverController({
     // Prefer a concrete element: most stable (no geometry drift) and enables semantic highlight.
     if (isEl(chipEl)) {
       const key = cacheKeyForEl({ yearKey, cat, typ, color });
+      console.log("[hover.key]", { key, lastCacheKey, cat, yearKey, typ, color });
 
       if (key === lastCacheKey) return;
       lastCacheKey = key;
 
       // IMPORTANT: pass `el` and `cat` so renderLegendHalo can broadcast highlight.
       halo.show({ el: chipEl, cat: cat || null, color, strength });
+      // Semantic highlight (cat + year) — legend uses this to render year meta on the active chip.
+      broadcastHighlight(legendRootEl, { cat, yearKey });
 
       emitHover({
         cat,
@@ -271,9 +275,11 @@ export function createBarHoverController({
     lastCacheKey = key;
 
     halo.show({ x: pt.x, y: pt.y, cat: n.cat || null, color, strength });
+    // Semantic highlight (cat + year) — best-effort for XY hover.
+    broadcastHighlight(legendRootEl, { cat: n.cat || "", yearKey });
 
     emitHover({
-      cat: n.cat || "",      // XY path cannot guarantee a DOM-derived cat
+      cat: n.cat || "", // XY path cannot guarantee a DOM-derived cat
       yearKey,
       typ,
       color,

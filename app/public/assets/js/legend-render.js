@@ -29,7 +29,6 @@
 //    - Cat nodes:    <button class="legend-chip legend-node legend-node--cat">
 //      Required datasets for interop:
 //        - dataset.cat = <cat identity>
-//        - dataset.category = <cat identity> (compat alias)
 //        - dataset.active = "true|false" (toggle state)
 //        - dataset.highlight = "true|false" (glow)
 //        - dataset.hidden = "true" (optional; higher-level may hide/remove)
@@ -177,6 +176,10 @@ export function renderHtmlNodes({
   onToggle,
   usedNodeIds,
   highlightedCat,
+  // OPTIONAL: category -> year span (Map or plain object). Value: [min,max] or {min,max}
+  catYearSpan,
+  // OPTIONAL: currently highlighted year from the bar chart (hover/selection)
+  highlightedYear,
 }) {
   const nodeElById = new Map();
 
@@ -249,7 +252,6 @@ export function renderHtmlNodes({
 
     // Interop with hover/halo controllers (must be stable)
     btn.dataset.cat = node.cat;
-    btn.dataset.category = node.cat;
 
     btn.dataset.active = isOn ? "true" : "false";
     btn.setAttribute("aria-pressed", isOn ? "true" : "false");
@@ -264,22 +266,73 @@ export function renderHtmlNodes({
     if (isHi) btn.style.setProperty("--legend-glow", bg);
     else btn.style.removeProperty("--legend-glow");
 
-    const label = el("span", "legend-chip__label", node.label);
+    // Label is a container so we can optionally show year metadata for the highlighted chip.
+    const label = el("span", "legend-chip__label");
+    const titleEl = el("span", "legend-chip__title", node.label);
+    label.appendChild(titleEl);
+
+    // Only the highlighted chip shows year range + current year.
+    const isActiveChip = typeof highlightedCat === "string" && highlightedCat === node.cat;
+
+    // Resolve category year span (from caller or embedded node meta).
+    const spanRaw =
+      (catYearSpan && (catYearSpan.get?.(node.cat) ?? catYearSpan[node.cat])) ??
+      (node.yearSpan || node.years || node.meta?.yearSpan || null);
+
+    const normSpan = (v) => {
+      if (!v) return null;
+      if (Array.isArray(v) && v.length >= 2) return { min: Number(v[0]), max: Number(v[1]) };
+      if (typeof v === "object" && v != null && ("min" in v || "max" in v)) {
+        return { min: Number(v.min), max: Number(v.max) };
+      }
+      return null;
+    };
+
+    const span = normSpan(spanRaw);
+    const y = highlightedYear != null && String(highlightedYear).trim() !== "" ? String(highlightedYear) : null;
+
+    if (isActiveChip && span) {
+      // Title meta: show the full existence range of the category: `min - max`.
+      // The current year is shown on the amount line (`YYYY: amount`).
+      const min = Number.isFinite(span.min) ? span.min : null;
+      const max = Number.isFinite(span.max) ? span.max : null;
+
+      let text = "";
+      if (min != null && max != null) text = min === max ? String(min) : `${min} - ${max}`;
+      else if (min != null) text = String(min);
+      else if (max != null) text = String(max);
+
+      if (text) {
+        // Ensure visible separation even if CSS gap is missing.
+        label.appendChild(document.createTextNode(" "));
+        const metaEl = el("span", "legend-chip__meta", text);
+        label.appendChild(metaEl);
+      }
+    }
 
     const total = catTotals?.get?.(node.cat);
-    const valueEl = el("span", "legend-chip__value", total == null ? "" : formatTotal(total, mode));
 
-    // Money tone for amount chips
-    // - Use data-tone (preferred) so moneyTone.css can style any component.
-    // - legend-network.css consumes --tone-* variables.
+    // Value text: for the highlighted chip prepend the current year: `YYYY: amount`.
+    const valueText = (() => {
+      if (total == null) return "";
+      const amount = formatTotal(total, mode);
+      const yStr = y || "";
+      return isActiveChip && yStr ? `${yStr}: ${amount}` : amount;
+    })();
+
+    const valueEl = el("span", "legend-chip__value", valueText);
+
+    // Money tone for the amount line ONLY
+    // - Keep chip background bound to category color (--cat-bg).
+    // - Apply tone to the value element so only the number changes color.
     if (total == null) {
       valueEl.style.display = "none";
       // Ensure no stale tone when value disappears
-      btn.removeAttribute("data-tone");
-      btn.classList.remove("tone-pos", "tone-neg", "tone-zero", "tone-neutral");
+      valueEl.removeAttribute("data-tone");
+      valueEl.classList.remove("tone-pos", "tone-neg", "tone-zero");
     } else {
       valueEl.style.display = "";
-      applyToneFromValue(btn, total, { mode: "data" });
+      applyToneFromValue(valueEl, total, { mode: "data" });
     }
 
     btn.append(label, valueEl);

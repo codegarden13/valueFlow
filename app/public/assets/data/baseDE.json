@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "country": "DE",
+  "currency": "EUR",
+  "years": {
+    "2020": {
+      "rentenversicherung": {
+        "rentenwert": [
+          {
+            "effective_from": "2020-07-01",
+            "west_eur_per_entgeltpunkt_month": 34.19,
+            "ost_eur_per_entgeltpunkt_month": 33.23
+          }
+        ],
+        "durchschnittsentgelt_eur": 40551
+      },
+      "macro": {
+        "inflation_cpi_yoy_percent": 0.5
+      },
+      "steuer": {
+        "grundfreibetrag_eur": {
+          "single": 9408,
+          "married_joint": 18816
+        }
+      }
+    }
+  }
+}

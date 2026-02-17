@@ -195,6 +195,84 @@ export function legendStopMs(state, nodeCount = null) {
   return baseMs + extraMs;
 }
 
+// ---------------------------------------------------------------------------
+// Rhythmische Envelope für Legend-Simulation (klassischer Puls)
+// ---------------------------------------------------------------------------
+// Exposed as a property on legendStopMs so callers don't need a new API.
+// legend-simulation.js will use it if present.
+legendStopMs.rhythm = function legendRhythm(state, totalMs) {
+  const t = timingOf(state);
+  const l = t?.legend || {};
+
+  // Grid for pulses: prefer timing.legend.per, fall back to global quantize, then 1/8.
+  const grid = String(l.per ?? t.quantize ?? "1/8");
+
+  // Musical constants
+  const beatMs = msPerQuarter(state); // quarter-note beat
+  const stepMs = Math.max(20, noteMs(state, grid));
+  const beatsBar = beatsPerBar(state); // from timeSignature (default 4)
+
+  // How many steps make one beat (rounded; assumes "classic" grids like 1/8, 1/16)
+  const stepsPerBeat = Math.max(1, Math.round(beatMs / stepMs));
+
+  // Optional swing (0..0.5), reusing existing helper
+  const useSwing = swingAmount(state) > 0;
+
+  // Duration
+  const total = Math.max(800, Number(totalMs) || 0);
+
+  // Envelope parameters (optional; your current config does NOT need changes)
+  // You can override them in config.timing.legend.{kickAlpha,beatAlpha,offAlpha,kickDecay,beatDecay,offDecay}
+  const kickAlpha = Number(l.kickAlpha ?? t.legendKickAlpha) || 0.26;
+  const beatAlpha = Number(l.beatAlpha ?? t.legendBeatAlpha) || 0.12;
+  const offAlpha  = Number(l.offAlpha  ?? t.legendOffAlpha)  || 0.04;
+
+  const kickDecay = Number(l.kickDecay ?? t.legendKickDecay) || 0.54;
+  const beatDecay = Number(l.beatDecay ?? t.legendBeatDecay) || 0.66;
+  const offDecay  = Number(l.offDecay  ?? t.legendOffDecay)  || 0.72;
+
+  const events = [];
+
+  // Downbeat kick ("1")
+  events.push({ t: 0, alphaTarget: kickAlpha, velocityDecay: kickDecay, alphaBoost: 0.45 });
+
+  // Quantized pulse grid
+  const steps = Math.floor(total / stepMs);
+  for (let i = 1; i <= steps; i++) {
+    const swingOffset = useSwing ? applySwingToStepMs(state, i, stepMs) : 0;
+    const at = Math.min(total, Math.round(i * stepMs + swingOffset));
+
+    const isBeat = (i % stepsPerBeat) === 0;
+    if (isBeat) {
+      const beatIndex = Math.floor(i / stepsPerBeat); // 1..n
+      const isDownbeat = beatsBar > 0 && (beatIndex % beatsBar === 0);
+
+      if (isDownbeat) {
+        events.push({ t: at, alphaTarget: beatAlpha + 0.04, velocityDecay: beatDecay, alphaBoost: 0.24 });
+      } else {
+        events.push({ t: at, alphaTarget: beatAlpha, velocityDecay: beatDecay, alphaBoost: 0.16 });
+      }
+    } else {
+      events.push({ t: at, alphaTarget: offAlpha, velocityDecay: offDecay, alphaBoost: 0.0 });
+    }
+  }
+
+  // End: settle completely
+  events.push({ t: total, alphaTarget: 0, velocityDecay: offDecay, alphaBoost: 0.0 });
+
+  // Sort + dedupe by t
+  events.sort((a, b) => a.t - b.t);
+  const out = [];
+  let lastT = -1;
+  for (const e of events) {
+    const tt = e.t | 0;
+    if (tt === lastT) continue;
+    out.push({ ...e, t: tt });
+    lastT = tt;
+  }
+  return out;
+};
+
 // =============================================================================
 // 5) Musical grid + quantization + swing/shuffle
 // =============================================================================
