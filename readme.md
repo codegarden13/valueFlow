@@ -43,7 +43,7 @@ Die Quelle (CSV) ist ein gleichwertiger Filter- und Aggregations-Treiber
 </details>
 
 <details>
-<summary><strong>Erwartete CSV-Struktur</strong></summary>
+<summary><strong>Erwartete CSV-Struktur: Beliebige zusätzliche Spalten sind erlaubt.</strong></summary>
 
 **Semikolon-separiert:**
 
@@ -57,8 +57,7 @@ Gegenpartei;Kostenart;Kategorie;Buchungstyp;Von;Bis;Jahr;Betrag;Menge;Einheit;St
 - Buchungstyp
 - mindestens eines der Datumsfelder: `Jahr` oder `Von/Bis`
 
-Die CSV-Datei selbst wird automatisch als `Source` geführt  
-(keine zusätzliche Spalte notwendig).
+(Die CSV-Dateien werden als `Source` geführt und im Network-Graph visualisiert)
 
 </details>
 
