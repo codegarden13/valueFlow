@@ -1,8 +1,10 @@
 # Themenbasierter KPI-Rechner über Zeiträume
 
-Interaktive Analyse von Kosten, Mengen, Erlösen und Ergebnissen über Jahre entlang **Quelle → Buchungstyp → Kategorie → wirtschaftliches Resultat** für Projektanalysen, Investitionsbewertungen, Kennzahlenvergleiche, Ergebnisorientierte Auswertungen
+Interaktive Analyse von Kosten, Mengen, Erlösen und Ergebnissen über Jahre entlang **Quelle → Buchungstyp → Kategorie → wirtschaftliches Resultat** 
+Anwendung: Projektanalysen, Investitionsbewertungen, Kennzahlenvergleiche, Ergebnisorientierte Auswertungen
 
-*Das gibt es alles schon so irgendwie*. Aber nicht so: **OLAP "light" für Menschen. 😎**
+*Das gibt es alles schon so irgendwie*. 
+Aber nicht so: **OLAP "light" für Menschen. 😎**
 
 ![alt text](assets/legend_01.png)
 
