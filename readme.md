@@ -18,8 +18,8 @@ Aber nicht so einfach und gleichzeitig **real. Für Menschen. 😎**
 
 - ✔ Strukturdisziplin: Trennung von Quelle, Typ und Kategorie erzwingt konsistente Modellbildung.
 - ✔ Transparente Wirklogik: Ökonomische Bewegungen sind nachvollziehbar – nicht nur aggregiert.
-- ✔ Themenraum-Vergleich: Mehrere CSV-Dateien können als getrennte, aber vergleichbare Modellräume analysiert werden.
-- ✔ Niedrige technische Einstiegshürde: Keine Datenbank, keine ETL-Strecke – CSV genügt.
+- ✔ Themenraum-Vergleich: Mehrere CSV-Dateien können als getrennte und Modellräume analysiert werden.
+- ✔ Niedrige technische Einstiegshürde: Keine Datenbank, keine ETL-Strecke durch robustes CSV-Format.
 - ✔ Explorative Validierung: Strukturvisualisierung für eigene Clusterprüfung und Modellkonsistenz.
 
 ## Datenmodell
@@ -27,13 +27,8 @@ Aber nicht so einfach und gleichzeitig **real. Für Menschen. 😎**
 <details>
 <summary><strong>Mehrere universelle CSV‑Datenquellen</strong></summary>
 
-Die Anwendung arbeitet mit mehreren generischen CSV-Dateien.  
-**Eine CSV entspricht einem Themenbereich** (z. B. Betrieb, Vermietung, Instandhaltung, Projekt X).
-
-Jede Datei ist gleichzeitig:
-- Datenquelle
-- semantischer Container
-- eigene Analyse-Dimension ("Quelle")
+- Mehrere generische CSV-Dateien bilden **Themenbereiche** ab. (z. B. Betrieb, Vermietung, Instandhaltung, Projekt X).
+- Jede CSV ist paritätisch alles gleichzeitig: Datenquelle, semantischer Container und Deine eigene Analyse-Dimension ("= Quelle")
 
 </details>
 
