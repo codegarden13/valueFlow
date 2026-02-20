@@ -1,18 +1,19 @@
 /**
  * barHoverController.js
  * =============================================================================
- * Orchestrates hover UX between Chart bars and Legend pills.
+ * Orchestriert Hover UX zwischen Chart-Bars und Legend-Pills.
  *
- * Responsibilities:
- * - Normalize whatever the chart hover callback provides into a stable "hover model".
- * - Drive the legend halo (visual) AND broadcast semantic highlight via renderLegendHalo.js.
- * - Provide a tiny, ctx-free handler that renderer/chart can call.
- * - Include yearKey/type in the hover model when the chart provides it (so the inspector can slice details precisely).
+ * Aufgaben:
+ * - Normalisiert Chart-Hover-Payloads in ein stabiles Hover-Model.
+ * - Steuert den Legend-Halo (visuell) und broadcastet semantische Highlight-Events.
+ * - Liefert einen kleinen, ctx-freien Controller für renderer/chart.
+ * - Enthält yearKey + typ/type, sofern das Chart sie liefert.
  *
- * This module intentionally does NOT:
- * - compute aggregates
- * - mutate ctx.state
- * - know about inspector panels
+ * Wichtige Contracts:
+ * - Kategorie ist Option-A Identity: whitespace-sensitiv.
+ *   -> Wir trimmen Kategorien NICHT; whitespace-only gilt als "leer".
+ * - Typ kann als `type` (Chart) oder `typ` (legacy) kommen.
+ *   -> Wir akzeptieren beides und halten `typ`/`type` synchron.
  *
  * Export:
  * - createBarHoverController({ legendRootEl, getPillEl, getColor, onHoverModel })
@@ -21,6 +22,10 @@
  */
 
 import { createLegendHalo } from "./renderLegendHalo.js";
+
+// -----------------------------------------------------------------------------
+// DOM + Utility
+// -----------------------------------------------------------------------------
 
 function isEl(v) {
   return v && typeof v === "object" && v.nodeType === 1;
@@ -36,9 +41,19 @@ function toStr(v) {
   return s.length ? s : "";
 }
 
+function toId(v) {
+  // Option A identity: preserve as-is, but treat whitespace-only as empty.
+  const s = String(v ?? "");
+  return s.trim().length ? s : "";
+}
+
 function isMouseEventLike(v) {
   return v && typeof v === "object" && typeof v.type === "string" && "target" in v;
 }
+
+// -----------------------------------------------------------------------------
+// Payload normalization
+// -----------------------------------------------------------------------------
 
 function normalizePayload(payload) {
   // Allow MouseEvent directly
@@ -50,6 +65,7 @@ function normalizePayload(payload) {
       chipEl: null,
       yearKey: "",
       typ: "",
+      type: "",
       raw: payload,
     };
   }
@@ -57,11 +73,19 @@ function normalizePayload(payload) {
   const p = payload && typeof payload === "object" ? payload : {};
   const event = p.event || p.e || p.mouseEvent || null;
 
-  const cat = toStr(p.cat ?? p?.bar?.cat);
+  const cat = toId(p.cat ?? p?.bar?.cat);
   const color = toStr(p.color ?? p?.bar?.color ?? p?.bar?.fill);
   const yearKey = toStr(p.yearKey ?? p?.bar?.yearKey ?? p?.bar?.year ?? p?.bar?.x);
-  const typ = toStr(p.typ ?? p?.bar?.typ ?? p?.bar?.type);
+
+  // Chart emits `type`, legacy emits `typ`.
+  const typeIn = toStr(p.type ?? p?.bar?.type);
+  const typIn = toStr(p.typ ?? p?.bar?.typ);
+
   const chipEl = pickFirst(p.chipEl, p?.dom?.chipEl, p?.nodes?.chipEl);
+
+  // Keep both in sync (do NOT coerce "?" here; that is a display/cache concern)
+  const typ = typIn || typeIn;
+  const type = typeIn || typIn;
 
   return {
     event: event && typeof event === "object" ? event : null,
@@ -70,25 +94,25 @@ function normalizePayload(payload) {
     chipEl: isEl(chipEl) ? chipEl : null,
     yearKey,
     typ,
+    type,
     raw: payload,
   };
 }
 
-/**
- * Default pill resolver
- * ---------------------------------------------------------------------------
- * Tries to find a legend pill for a given category using common patterns.
- */
+// -----------------------------------------------------------------------------
+// Default pill resolvers
+// -----------------------------------------------------------------------------
+
 function defaultGetPillEl({ legendRootEl, cat }) {
   if (!isEl(legendRootEl) || !cat) return null;
 
   const esc = (s) => CSS.escape(String(s));
 
-  // Try data attributes first
+  // Prefer data attributes
   const byData = legendRootEl.querySelector(`[data-cat="${esc(cat)}"]`);
   if (isEl(byData)) return byData;
 
-  // Last resort: strict textContent match inside pill-ish elements
+  // Fallback: strict text match
   const candidates = legendRootEl.querySelectorAll(".legend-node--cat, .legend-chip");
   for (const el of candidates) {
     const t = (el.textContent || "").trim();
@@ -102,6 +126,10 @@ function defaultGetColor({ color }) {
   return color || "rgba(255,255,255,0.9)";
 }
 
+// -----------------------------------------------------------------------------
+// Geometry helpers
+// -----------------------------------------------------------------------------
+
 function getLocalPoint(legendRootEl, event) {
   if (!isEl(legendRootEl) || !event) return null;
 
@@ -110,11 +138,12 @@ function getLocalPoint(legendRootEl, event) {
   if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
 
   const r = legendRootEl.getBoundingClientRect();
-  return {
-    x: cx - r.left,
-    y: cy - r.top,
-  };
+  return { x: cx - r.left, y: cy - r.top };
 }
+
+// -----------------------------------------------------------------------------
+// Legend event bridge
+// -----------------------------------------------------------------------------
 
 function dispatchLegendEvent(rootEl, type, detail) {
   if (!isEl(rootEl)) return;
@@ -126,7 +155,7 @@ function dispatchLegendEvent(rootEl, type, detail) {
 }
 
 function broadcastHighlight(legendRootEl, { cat, yearKey }) {
-  const c = toStr(cat);
+  const c = toId(cat);
   const y = toStr(yearKey);
   dispatchLegendEvent(legendRootEl, "legend:highlight", {
     cat: c || null,
@@ -138,9 +167,10 @@ function broadcastClear(legendRootEl) {
   dispatchLegendEvent(legendRootEl, "legend:clearHighlight", {});
 }
 
-/**
- * createBarHoverController(...)
- */
+// -----------------------------------------------------------------------------
+// Controller
+// -----------------------------------------------------------------------------
+
 export function createBarHoverController({
   legendRootEl,
   getPillEl,
@@ -167,42 +197,49 @@ export function createBarHoverController({
   const emit = typeof onHoverModel === "function" ? onHoverModel : null;
 
   let lastCacheKey = "";
+  let lastModel = null;
 
   function emitHover(model) {
+    lastModel = model;
     emit?.(model);
   }
 
   function resolveCat(chipEl, n) {
     // Prefer semantic payload; fallback to DOM dataset.
-    return n.cat || (isEl(chipEl) ? chipEl.dataset?.cat || "" : "");
+    return n.cat || (isEl(chipEl) ? toId(chipEl.dataset?.cat || "") : "");
   }
 
   function resolveSlice(n) {
+    // Prefer typ; fallback to type.
     return {
       yearKey: n.yearKey || "",
-      typ: n.typ || "",
+      typ: n.typ || n.type || "",
+      type: n.type || n.typ || "",
     };
   }
 
-  function cacheKeyForEl({ yearKey, cat, typ, color }) {
+  function cacheKeyForEl({ yearKey, cat, typ, type, color }) {
     const y = yearKey || "?";
     const c = cat || "?";
-    const t = typ || "?";
+    const t = typ || type || "?";
     return `EL||${y}||${c}||${t}||${color}`;
   }
 
-  function cacheKeyForPt({ yearKey, cat, typ, color, x, y }) {
+  function cacheKeyForPt({ yearKey, cat, typ, type, color, x, y }) {
     const yy = yearKey || "?";
     const c = cat || "?";
-    const t = typ || "?";
+    const t = typ || type || "?";
     return `XY||${yy}||${c}||${t}||${color}||${x}||${y}`;
   }
 
   function clear() {
     lastCacheKey = "";
+    lastModel = null;
+
     // Visual halo cleanup + semantic clear.
-    halo.hide(); // also broadcasts legend:highlight {cat:null}
+    halo.hide();
     broadcastClear(legendRootEl);
+
     emitHover(null);
   }
 
@@ -213,8 +250,6 @@ export function createBarHoverController({
     // In sticky mode we keep the last halo/model.
     const isEmptySignal = !n.event && !n.chipEl && !n.cat;
     if (isEmptySignal) {
-      // Keep semantics of your current code:
-      // only clear if caller wants it AND sticky is off.
       if (clearOnEmptyHover && !stickyHover) clear();
       return;
     }
@@ -230,25 +265,22 @@ export function createBarHoverController({
     });
 
     const cat = resolveCat(chipEl, n);
-    const { yearKey, typ } = resolveSlice(n);
+    const { yearKey, typ, type } = resolveSlice(n);
 
-    // Prefer a concrete element: most stable (no geometry drift) and enables semantic highlight.
+    // Prefer a concrete element: stable + allows semantic highlight.
     if (isEl(chipEl)) {
-      const key = cacheKeyForEl({ yearKey, cat, typ, color });
-      console.log("[hover.key]", { key, lastCacheKey, cat, yearKey, typ, color });
-
+      const key = cacheKeyForEl({ yearKey, cat, typ, type, color });
       if (key === lastCacheKey) return;
       lastCacheKey = key;
 
-      // IMPORTANT: pass `el` and `cat` so renderLegendHalo can broadcast highlight.
       halo.show({ el: chipEl, cat: cat || null, color, strength });
-      // Semantic highlight (cat + year) — legend uses this to render year meta on the active chip.
       broadcastHighlight(legendRootEl, { cat, yearKey });
 
       emitHover({
         cat,
         yearKey,
         typ,
+        type,
         color,
         chipEl,
         geo: null,
@@ -259,8 +291,7 @@ export function createBarHoverController({
       return;
     }
 
-    // Fallback: use pointer position relative to legend root.
-    // renderLegendHalo will hit-test to find a pill and can still broadcast highlight if it resolves one.
+    // Fallback: pointer position relative to legend root.
     const pt = n.event ? getLocalPoint(legendRootEl, n.event) : null;
     if (!pt) {
       if (!stickyHover) clear();
@@ -269,19 +300,19 @@ export function createBarHoverController({
 
     const rx = Math.round(pt.x);
     const ry = Math.round(pt.y);
-    const key = cacheKeyForPt({ yearKey, cat: n.cat || "", typ, color, x: rx, y: ry });
+    const key = cacheKeyForPt({ yearKey, cat: n.cat || "", typ, type, color, x: rx, y: ry });
 
     if (key === lastCacheKey) return;
     lastCacheKey = key;
 
     halo.show({ x: pt.x, y: pt.y, cat: n.cat || null, color, strength });
-    // Semantic highlight (cat + year) — best-effort for XY hover.
     broadcastHighlight(legendRootEl, { cat: n.cat || "", yearKey });
 
     emitHover({
-      cat: n.cat || "", // XY path cannot guarantee a DOM-derived cat
+      cat: n.cat || "",
       yearKey,
       typ,
+      type,
       color,
       chipEl: null,
       geo: { x: pt.x, y: pt.y, r: 18 },
@@ -302,6 +333,14 @@ export function createBarHoverController({
     onHover,
     clear,
     attachChartLeave,
-    _debug: { halo },
+    _debug: {
+      halo,
+      get lastCacheKey() {
+        return lastCacheKey;
+      },
+      get lastModel() {
+        return lastModel;
+      },
+    },
   };
 }

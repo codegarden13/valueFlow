@@ -245,7 +245,12 @@ export function drawChart({ svgEl, rootEl, data, state, colorByCat, onBarHover }
   g.append("g")
     .attr("class", "axis axis-x")
     .attr("transform", `translate(0,${h - margin.bottom})`)
-    .call(d3.axisBottom(xYear));
+    .call(
+      d3.axisBottom(xYear).tickFormat((d) => {
+        const n = Number(d);
+        return Number.isFinite(n) ? String(n).slice(-2) : String(d);
+      })
+    );
 
   // ---------------------------------------------------------------------------
   // Render bars

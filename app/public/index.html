@@ -7,40 +7,33 @@
   <title id="appName">KPI Projects</title>
   <link rel="stylesheet" href="/assets/css/bootstrap.min.css" />
   <link rel="stylesheet" href="/assets/css/app.css" />
+  <link rel="stylesheet" href="/assets/css/genTables.css" />
+    <link rel="stylesheet" href="/assets/css/chart.css" />
   <link rel="stylesheet" href="/assets/css/moneyTone.css" />
   <link rel="stylesheet" href="/assets/css/legend-network.css" />
 </head>
 
 <body>
-  <!-- =========================================================================
-       App Mount
-       ========================================================================= -->
+  <!-- App Mount: zentrales Layout (links Analyse, rechts Insights) -->
   <main id="app" class="container-fluid py-3">
 
-    <!-- ======================================================================
-         ROW 1: Header (full width)
-         ====================================================================== -->
+    <!-- ROW 1: Header – App-Titel / Caption -->
     <div class="row g-3">
       <header id="pageHeader" class="col-12" aria-label="Kopfbereich">
-        <p id="appCaption" class="title mb-0"></p>
+        <p id="appCaption" class="title mb-0">ich bin oben</p>
       </header>
     </div>
 
-    <!-- ======================================================================
-         ROW 2: Main (2 columns)
-         - Left: Filters + Chart + Tooltip + Table Panel
-         - Right: Tabs (Legend | Details | Quellen | Insights)
-         ====================================================================== -->
+    <!-- ROW 2: Main – links Analyse (Filter/Chart/Tabs), rechts Insights (Trends/Notizen) -->
     <div class="row g-3 align-items-start">
 
-      <!-- LEFT COLUMN: Analysis / Chart -->
-      <section class="col-12 col-lg-6" aria-label="Auswertung">
+      <!-- LEFT: Analyse – Filter, Zeitraum, Chart, Inspector, Info+Tabs -->
+      <section class="col-12 col-lg-8" aria-label="Auswertung">
 
-        <!-- Filters -->
+        <!-- Filterleiste: Quelle / Typ / Kategorie / Modus -->
         <section class="mb-2" aria-label="Filter">
           <div class="row g-2">
 
-            <!-- Quelle (Multi-Select Dropdown) -->
             <div class="col-12 col-md-3">
               <label class="srOnly" for="srcBtn">Quelle</label>
               <div class="dropdown w-100">
@@ -49,18 +42,15 @@
                   data-bs-toggle="dropdown" aria-expanded="false">
                   Quellen: alle
                 </button>
-
                 <div class="dropdown-menu p-2 w-100" aria-labelledby="srcBtn">
                   <div class="d-flex gap-2 mb-2">
                     <button id="srcAllBtn" type="button" class="btn btn-sm btn-outline-secondary">Alle</button>
                   </div>
-
                   <div id="srcList" class="d-grid gap-1" role="listbox" aria-label="Quellen"></div>
                 </div>
               </div>
             </div>
 
-            <!-- Typ (Multi-Select Dropdown) -->
             <div class="col-12 col-md-3">
               <label class="srOnly" for="typeBtn">Typ</label>
               <div class="dropdown w-100">
@@ -69,19 +59,16 @@
                   data-bs-toggle="dropdown" aria-expanded="false">
                   Typen: alle
                 </button>
-
                 <div class="dropdown-menu p-2 w-100" aria-labelledby="typeBtn">
                   <div class="d-flex gap-2 mb-2">
                     <button id="typeAllBtn" type="button" class="btn btn-sm btn-outline-secondary">Alle</button>
                     <button id="typeResetBtn" type="button" class="btn btn-sm btn-outline-secondary">Reset</button>
                   </div>
-
                   <div id="typeList" class="d-grid gap-1" role="listbox" aria-label="Typen"></div>
                 </div>
               </div>
             </div>
 
-            <!-- Kategorie (Multi-Select Dropdown) -->
             <div class="col-12 col-md-3">
               <label class="srOnly" for="catBtn">Kategorie</label>
               <div class="dropdown w-100">
@@ -90,19 +77,16 @@
                   data-bs-toggle="dropdown" aria-expanded="false">
                   Kategorien: alle
                 </button>
-
                 <div class="dropdown-menu p-2 w-100" aria-labelledby="catBtn">
                   <div class="d-flex gap-2 mb-2">
                     <button id="catAllBtn" type="button" class="btn btn-sm btn-outline-secondary">Alle</button>
                     <button id="catResetBtn" type="button" class="btn btn-sm btn-outline-secondary">Reset</button>
                   </div>
-
                   <div id="catList" class="d-grid gap-1" role="listbox" aria-label="Kategorien"></div>
                 </div>
               </div>
             </div>
 
-            <!-- Modus -->
             <div class="col-12 col-md-3">
               <label class="srOnly" for="modeSelect">Modus</label>
               <select id="modeSelect" class="form-select">
@@ -114,236 +98,101 @@
           </div>
         </section>
 
-        <!-- Year Range (2 sliders) -->
         <section id="yearRange" class="yearRange mb-2" aria-label="Zeitraum">
           <div class="row g-2">
             <div class="col-6">
               <input id="yearFrom" class="yearRange__slider form-range" type="range" min="0" max="0" value="0" step="1" />
             </div>
-
             <div class="col-6">
               <input id="yearTo" class="yearRange__slider form-range" type="range" min="0" max="0" value="0" step="1" />
             </div>
           </div>
+          <div id="subtitle" class="yearRange__summary mb-2" aria-live="polite"></div>
         </section>
 
-        <!-- Chart -->
         <section id="chartWrap" class="chartWrap mb-3" aria-label="Diagramm">
           <svg id="chartSvg" role="img" aria-label="Diagramm"></svg>
         </section>
 
-        <!-- Tooltip (als eigenes Panel, kein Accordion) -->
-        <section id="tooltipPanel" class="w-100 mb-3" aria-label="Tooltip">
-          <section class="card">
-            <div class="card-body p-0">
-              <div id="categoryInspector" class="tip tip--fixed" aria-live="polite"></div>
+        <section class="mt-3" aria-label="Info und Tabs">
+          <section id="panel" class="panel">
+            <ul class="nav nav-tabs" id="rightTabs" role="tablist" aria-label="Tabs">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="categoryTab" data-bs-toggle="tab" data-bs-target="#categoryPane" type="button" role="tab" aria-controls="categoryPane" aria-selected="true">Kategorie</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="ctxTab" data-bs-toggle="tab" data-bs-target="#ctxPane" type="button" role="tab" aria-controls="ctxPane" aria-selected="false">CTX - Kontext</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="sourcesTab" data-bs-toggle="tab" data-bs-target="#sourcesPane" type="button" role="tab" aria-controls="sourcesPane" aria-selected="false">Quellen</button>
+              </li>
+            </ul>
+
+            <div class="tab-content pt-3" id="rightTabContent">
+              <div class="tab-pane fade show active" id="categoryPane" role="tabpanel" aria-labelledby="categoryTab" tabindex="0">
+                <header class="mb-2" aria-label="Kategorie Kopf">
+                  <h2 class="h6 mb-1">Kategorie – Details</h2>
+                </header>
+                <section aria-label="Kategorie Details Tabelle"><div id="categoryDetailsTable" class="derived-table"></div></section>
+                   <div id="categoryInspector" class="tip tip--fixed" aria-live="polite"></div>
+              </div>
+
+              <div class="tab-pane fade" id="ctxPane" role="tabpanel" aria-labelledby="ctxTab" tabindex="0">
+                <header class="mb-2" aria-label="CTX Kopf">
+                  <h2 class="h6 mb-1">CTX – derived</h2>
+                </header>
+                <section aria-label="CTX Tabelle"><div id="derivedTable" class="derived-table"></div></section>
+              </div>
+
+              <div class="tab-pane fade" id="sourcesPane" role="tabpanel" aria-labelledby="sourcesTab" tabindex="0">
+                <header class="mb-2" aria-label="Quellen Kopf">
+                  <h2 class="h6 mb-1">Aktive Datenquellen</h2>
+                </header>
+                <div id="sourcesEmpty" class="text-muted">Noch keine Quelldetails vorhanden.</div>
+                <section id="sourcesDetails" aria-label="Quellen Details"></section>
+              </div>
+
             </div>
           </section>
         </section>
 
-       
       </section>
 
-      <!-- RIGHT COLUMN: Tabs -->
-      <aside class="col-12 col-lg-6" aria-label="Rechtes Panel">
-        <section id="panel" class="panel">
-
-          <!-- Range Summary (bleibt global, unabhängig vom Tab) -->
-          <div id="subtitle" class="yearRange__summary mb-2" aria-live="polite"></div>
-
-          <!-- Tabs -->
-          <ul class="nav nav-tabs" id="rightTabs" role="tablist" aria-label="Rechtes Panel Tabs">
-
-            <li class="nav-item" role="presentation">
-              <button class="nav-link active"
-                id="legendTab"
-                data-bs-toggle="tab"
-                data-bs-target="#legendPane"
-                type="button"
-                role="tab"
-                aria-controls="legendPane"
-                aria-selected="true">
-                Legende
-              </button>
-            </li>
-
-            <li class="nav-item" role="presentation">
-              <button class="nav-link"
-                id="detailsTab"
-                data-bs-toggle="tab"
-                data-bs-target="#detailsPane"
-                type="button"
-                role="tab"
-                aria-controls="detailsPane"
-                aria-selected="false">
-                Details
-              </button>
-            </li>
-
-            <li class="nav-item" role="presentation">
-              <button class="nav-link"
-                id="sourcesTab"
-                data-bs-toggle="tab"
-                data-bs-target="#sourcesPane"
-                type="button"
-                role="tab"
-                aria-controls="sourcesPane"
-                aria-selected="false">
-                Quellen
-              </button>
-            </li>
-
-            <li class="nav-item" role="presentation">
-              <button class="nav-link"
-                id="insightsTab"
-                data-bs-toggle="tab"
-                data-bs-target="#insightsPane"
-                type="button"
-                role="tab"
-                aria-controls="insightsPane"
-                aria-selected="false">
-                Insights
-              </button>
-            </li>
-
-                        <li class="nav-item" role="presentation">
-              <button class="nav-link"
-                id="helpTab"
-                data-bs-toggle="tab"
-                data-bs-target="#helpPane"
-                type="button"
-                role="tab"
-                aria-controls="helpPane"
-                aria-selected="false">
-                Hilfe
-              </button>
-            </li>
-
-          </ul>
-
-          <!-- Tab Content -->
-          <div class="tab-content pt-3" id="rightTabContent">
-
-            <!-- LEGEND PANE -->
-            <div class="tab-pane fade show active"
-              id="legendPane"
-              role="tabpanel"
-              aria-labelledby="legendTab"
-              tabindex="0">
-              <section aria-label="Kategorien">
-                <div id="legend" class="legend"></div>
-              </section>
-            </div>
-
-            <!-- DETAILS PANE -->
-            <div class="tab-pane fade"
-              id="detailsPane"
-              role="tabpanel"
-              aria-labelledby="detailsTab"
-              tabindex="0">
-
-              <header id="detailsHeader" class="mb-2" aria-label="Details Kopf"></header>
-
-              <div id="detailsEmpty" class="text-muted">
-                Zeile auswählen, um Details anzuzeigen.
-              </div>
-
-              <article id="detailsMarkdown" class="markdown-body" aria-label="Markdown Details"></article>
-
-            </div>
-
-            <!-- SOURCES PANE -->
-            <div class="tab-pane fade"
-              id="sourcesPane"
-              role="tabpanel"
-              aria-labelledby="sourcesTab"
-              tabindex="0">
-
-              <header class="mb-2" aria-label="Quellen Kopf">
-                <h2 class="h6 mb-1">Aktive Datenquellen</h2>
-                <div class="text-muted small">
-                  Zeigt später Details zu den aktuell aktiven Quellen (Filterzustand).
-                </div>
-              </header>
-
-              <div id="sourcesEmpty" class="text-muted">
-                Noch keine Quelldetails vorhanden.
-              </div>
-
-              <section id="sourcesDetails" aria-label="Quellen Details"></section>
-
-            </div>
-
-            <!-- INSIGHTS PANE (rechts) -->
-            <div class="tab-pane fade"
-              id="insightsPane"
-              role="tabpanel"
-              aria-labelledby="insightsTab"
-              tabindex="0">
-
-              <section aria-label="Insights Inhalte">
-                <div class="row g-3">
-
-                  <div class="col-12 col-xl-6">
-                    <section id="insights-summary" class="card h-100">
-                      <div class="card-body">
-                        <h2 class="h6 card-title mb-2">Summary</h2>
-                        <div class="insights__body">Platzhalter…</div>
-                      </div>
-                    </section>
-                  </div>
-
-                  <div class="col-12 col-xl-6">
-                    <section id="insights-anomalies" class="card h-100">
-                      <div class="card-body">
-                        <h2 class="h6 card-title mb-2">Anomalien</h2>
-                        <div class="insights__body">Platzhalter…</div>
-                      </div>
-                    </section>
-                  </div>
-
-                  <div class="col-12 col-xl-6">
-                    <section id="insights-trends" class="card h-100">
-                      <div class="card-body">
-                        <h2 class="h6 card-title mb-2">Trends</h2>
-                        <div class="insights__body">Platzhalter…</div>
-                      </div>
-                    </section>
-                  </div>
-
-                  <div class="col-12 col-xl-6">
-                    <section id="insights-notes" class="card h-100">
-                      <div class="card-body">
-                        <h2 class="h6 card-title mb-2">Notizen</h2>
-                        <div class="insights__body">Platzhalter…</div>
-                      </div>
-                    </section>
-                  </div>
-
+      <aside class="col-12 col-lg-4" aria-label="Insights">
+        <section aria-label="Insights Inhalte">
+          <div class="row g-3">
+            <div class="col-12">
+              <section id="insights-legend" class="card h-100">
+                <div class="card-body">
+                  <h2 class="h6 card-title mb-2">Legende</h2>
+                  <div id="legend" class="legend"></div>
                 </div>
               </section>
-
             </div>
+            <div class="col-12">
+              <section id="insights-trends" class="card h-100"><div class="card-body"><h2 class="h6 card-title mb-2">Trends</h2><div class="insights__body">Platzhalter…</div></div></section>
+            </div>
+            <div class="col-12">
+              <section id="insights-notes" class="card h-100"><div class="card-body"><h2 class="h6 card-title mb-2">Notizen</h2><div class="insights__body">Platzhalter…</div></div></section>
+            </div>
+
+
+
+
+
+
+
 
           </div>
-
         </section>
       </aside>
 
     </div>
 
-    <!-- ======================================================================
-         ROW 3: Footer (full width)
-         ====================================================================== -->
-    <div class="row g-3">
-      <footer id="pageFooter" class="col-12" aria-label="Fußbereich"></footer>
-    </div>
+    <div class="row g-3"><footer id="pageFooter" class="col-12" aria-label="Fußbereich"></footer></div>
 
   </main>
 
-  <!-- =========================================================================
-       Scripts (Vendor → libs → app entry)
-       ========================================================================= -->
   <script src="/assets/js/bootstrap.bundle.min.js"></script>
   <script src="/assets/js/d3.v7.min.js"></script>
   <script type="module" src="/main.js"></script>

@@ -83,6 +83,7 @@
 #legend.legend {
   position: relative;
   width: 100%;
+  
   color: var(--shadow-deep, #111);
   background: transparent !important;
 }
@@ -303,8 +304,20 @@
 }
 
 .legend-chip[data-active="false"] {
+  /* Keep chips readable but avoid heavy compositing that can look like a halo/gap
+     against the SVG edges behind the chip. */
   opacity: var(--legend-chip-off-opacity);
-  filter: grayscale(1);
+
+  /* Instead of a filter (creates a new stacking/compositing context), gently desaturate
+     via color-mix so links visually meet the chip edge without a "padding" look. */
+  border-color: color-mix(in srgb, var(--legend-border-1) 65%, transparent);
+  background: color-mix(in srgb, var(--cat-bg, var(--legend-surface-1)) 82%, transparent);
+  filter: none;
+}
+
+.legend-chip[data-highlight="true"] {
+  /* Ensure highlight state stays solid and crisp */
+  background: var(--cat-bg, var(--legend-surface-1));
 }
 
 /* If the off-opacity token is missing, stay readable */

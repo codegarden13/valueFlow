@@ -36,6 +36,106 @@ function elById(id) {
   return k ? document.getElementById(k) : null;
 }
 
+function queryOne(sel) {
+  try {
+    return document.querySelector(sel);
+  } catch {
+    return null;
+  }
+}
+
+function asCatId(v) {
+  const s = typeof v === "string" ? v : "";
+  return s.trim().length ? s : "";
+}
+
+function getCatColor(ctx, cat) {
+  const c = asCatId(cat);
+  if (!c) return "";
+  const m = ctx?.derived?.colorByCat;
+  if (!(m instanceof Map)) return "";
+  const v = m.get(c);
+  return typeof v === "string" ? v : "";
+}
+
+function pickTextColor(bg) {
+  const s = String(bg || "").trim();
+  if (!s) return "";
+  if (s[0] === "#") {
+    let r, g, b;
+    if (s.length === 4) {
+      r = parseInt(s[1] + s[1], 16);
+      g = parseInt(s[2] + s[2], 16);
+      b = parseInt(s[3] + s[3], 16);
+    } else if (s.length === 7) {
+      r = parseInt(s.slice(1, 3), 16);
+      g = parseInt(s.slice(3, 5), 16);
+      b = parseInt(s.slice(5, 7), 16);
+    }
+    if ([r, g, b].every((x) => Number.isFinite(x))) {
+      const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      return lum > 0.62 ? "#111" : "#fff";
+    }
+  }
+  const m = s.match(/rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (m) {
+    const r = Number(m[1]);
+    const g = Number(m[2]);
+    const b = Number(m[3]);
+    if ([r, g, b].every((x) => Number.isFinite(x))) {
+      const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      return lum > 0.62 ? "#111" : "#fff";
+    }
+  }
+  return "";
+}
+
+function setCategoryTabUI(ctx, cat, tabBtnId = "categoryTab") {
+  let btn = elById(tabBtnId);
+
+  // Fallbacks: Bootstrap tabs may be wired via aria-controls / data-bs-target.
+  if (!btn) {
+    btn = queryOne('[aria-controls="categoryPane"]');
+  }
+  if (!btn) {
+    btn = queryOne('[data-bs-target="#categoryPane"]');
+  }
+
+  if (!btn) {
+    if (!setCategoryTabUI.__warned) {
+      setCategoryTabUI.__warned = true;
+      console.warn("categoryInspector: category tab button not found (expected id=categoryTab or target=#categoryPane)");
+    }
+    return;
+  }
+
+  const c = asCatId(cat);
+
+  // Label always updates.
+  btn.textContent = c || "Kategorie";
+
+  // Visual styling only when the tab is currently active.
+  const isActive = btn.classList.contains("active");
+  if (!isActive || !c) {
+    btn.style.backgroundColor = "";
+    btn.style.borderColor = "";
+    btn.style.color = "";
+    return;
+  }
+
+  const bg = getCatColor(ctx, c);
+  if (!bg) {
+    btn.style.backgroundColor = "";
+    btn.style.borderColor = "";
+    btn.style.color = "";
+    return;
+  }
+
+  btn.style.backgroundColor = bg;
+  btn.style.borderColor = bg;
+  btn.style.color = pickTextColor(bg) || "";
+}
+
 function coerceDetailsByKey(detailsByKey) {
   if (detailsByKey instanceof Map) return detailsByKey;
   if (detailsByKey && typeof detailsByKey === "object") {
@@ -143,7 +243,7 @@ function renderInspectorTable({ category, columns, rows, meta = {} }) {
 // 4) Data collection
 // -----------------------------------------------------------------------------
 function collectCategoryRows(ctx, payload) {
-  const cat = String(payload?.cat || "");
+  const cat = asCatId(payload?.cat);
   const yearKeyPayload = payload?.yearKey ?? payload?.year ?? payload?.Jahr;
   const typPayloadRaw = payload?.typ ?? payload?.type;
   const typPayload = typPayloadRaw == null || typPayloadRaw === "" ? null : String(typPayloadRaw);
@@ -350,6 +450,7 @@ export function createCategoryInspector(
   {
     hostId = "categoryInspector",
     titleElId = "tooltipAccTitle",
+    tabBtnId = "categoryTab",
   } = {}
 ) {
   if (!ctx) throw new Error("createCategoryInspector: ctx missing");
@@ -361,18 +462,32 @@ export function createCategoryInspector(
     if (!el) return;
     el.innerHTML = "";
     setInspectorTitle("Kategorie", "", titleElId);
+    setCategoryTabUI(ctx, "", tabBtnId);
+    try {
+      const btn = elById(tabBtnId) || queryOne('[aria-controls="categoryPane"]') || queryOne('[data-bs-target="#categoryPane"]');
+      if (btn) btn.title = "";
+    } catch {
+      // ignore
+    }
   }
 
   function update(payload) {
     const el = host();
     if (!el) return;
 
-    if (!payload || typeof payload !== "object" || !payload.cat) {
+    if (!payload || typeof payload !== "object" || !asCatId(payload.cat)) {
       clear();
       return;
     }
 
     const { category, columns, rows, total, yearKey, typ } = collectCategoryRows(ctx, payload);
+    setCategoryTabUI(ctx, category, tabBtnId);
+    try {
+      const btn = elById(tabBtnId) || queryOne('[aria-controls="categoryPane"]') || queryOne('[data-bs-target="#categoryPane"]');
+      if (btn) btn.title = category ? String(category) : "";
+    } catch {
+      // ignore
+    }
 
     const includePrevYears = payload?.includePrevYears !== false;
 

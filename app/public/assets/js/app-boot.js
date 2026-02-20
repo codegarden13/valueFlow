@@ -8,8 +8,8 @@
 // - optional weiteres UI wiring (Dropdowns/Mode/Years) via opts.wireUI(ctx)
 // - initial UI aus State spiegeln (ohne redraw)
 // - Rohdaten (RAW) einmalig laden (loadData)
-// - initialen redraw triggern (requestRedraw)
-//
+// - initialen redraw coalesced triggern (requestRedraw)
+// 
 // State-Contracts (Industrial Style):
 // - enabledSourceIds: explizit, leer = alle aktiv (UI-Komprimierung)
 // - enabledTypes: explizit, null => "alle" (UI-Komprimierung)
@@ -43,16 +43,15 @@ export async function boot(opts = {}) {
   const ctx = await createContext();
   if (!ctx.flags) ctx.flags = {};
   ctx.flags.ready = false;
+  if (typeof ctx.flags.redrawQueued !== "boolean") ctx.flags.redrawQueued = false;
 
   // ---------------------------------------------------------------------------
   // 2) Redraw-Gate: während Boot puffern, erst nach ready ausführen
   // ---------------------------------------------------------------------------
-  let pendingRedraw = false;
-
   const requestRedrawGated = async (c) => {
     // Während Boot: nur merken, dass ein Redraw gewünscht ist.
     if (!c?.flags?.ready) {
-      pendingRedraw = true;
+      c.flags.redrawQueued = true;
       return;
     }
     // Nach Boot: echte Redraw-Pipeline aufrufen
@@ -83,18 +82,9 @@ export async function boot(opts = {}) {
   // ctx.flags.dataDirty = true;
 
   // ---------------------------------------------------------------------------
-  // 6) Boot abschließen: ab jetzt dürfen Redraws laufen
+  // 6) Boot abschließen + initialen Render coalesced triggern
   // ---------------------------------------------------------------------------
-  ctx.flags.ready = true;
-
-  // ---------------------------------------------------------------------------
-  // 7) Initialen Render triggern (genau einmal)
-  //    Falls während Boot schon Redraws angefordert wurden, reicht EIN Call.
-  // ---------------------------------------------------------------------------
-  if (pendingRedraw) {
-    pendingRedraw = false;
-  }
-  await ctx.requestRedraw(ctx);
+  await finalizeBootAndRender(ctx);
 
   return ctx;
 }
@@ -211,12 +201,21 @@ function wireOptionalUI(ctx, wireUI) {
   if (uiHandle && typeof uiHandle === "object") ctx.ui = uiHandle;
 }
 
-function finalizeBootAndRender(ctx) {
+async function finalizeBootAndRender(ctx) {
   // Redraws freigeben
   ctx.flags.ready = true;
 
-  // Falls während wiring redrawQueued gesetzt wurde: entstauen
-  if (ctx.flags.redrawQueued) ctx.flags.redrawQueued = false;
+  // Genau EIN initialer Render – egal wie viele Requests während Boot kamen.
+  // Wir nutzen absichtlich den Gated-Hook, damit die Pipeline konsistent bleibt.
+  if (ctx.flags.redrawQueued) {
+    ctx.flags.redrawQueued = false;
+    await ctx.requestRedraw(ctx);
+    return;
+  }
+
+  // Auch wenn niemand während Boot ein Redraw angefordert hat,
+  // rendert die App initial genau einmal.
+  await ctx.requestRedraw(ctx);
 }
 
 // ============================================================================
@@ -232,7 +231,7 @@ function createInitialFlags() {
     resetCats: true,
     resetYears: true,
 
-    // redraw coalescing
+    // redraw coalescing (boot + runtime)
     redrawInFlight: false,
     redrawQueued: false,
 

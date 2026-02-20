@@ -75,6 +75,8 @@ export function runSimulation({
   collideR,
   band,
   legendStopMs,
+  // Optional: influence deterministic seeding so nodes start higher in the box.
+  seedConf,
 }) {
   // --- Focus/highlight helpers
   function resolveHighlightCat(state) {
@@ -111,6 +113,23 @@ export function runSimulation({
   }
 
   // ---------------------------------------------------------------------------
+  // Seed configuration (controls where nodes start; still clamped later)
+  // ---------------------------------------------------------------------------
+  const SEED = {
+    // Safe padding for initial seed positions (in px). Clamp will still ensure bounds.
+    padTop: 28,
+    padBottom: 28,
+
+    // >1 pushes seeds toward the top (smaller y). 1 = linear.
+    yPow: 1.25,
+
+    // Jitter amplitude (px) added deterministically (kept conservative).
+    jitterX: 48,
+    jitterY: 120,
+
+    ...(seedConf && typeof seedConf === "object" ? seedConf : null),
+  };
+  // ---------------------------------------------------------------------------
   // Deterministic seeding (prevents NaN targets / unstable layouts)
   // ---------------------------------------------------------------------------
   function hash32(str) {
@@ -146,15 +165,28 @@ export function runSimulation({
 
         // X seed: band lane + small deterministic jitter
         if (!Number.isFinite(n.x)) {
-          const j = (jitter01(id, "x") - 0.5) * 48;
+          const j = (jitter01(id, "x") - 0.5) * (Number(SEED.jitterX) || 48);
           n.x = bandX(width, kind, band) + j;
         }
 
-        // Y seed: evenly spaced + small deterministic jitter
+        // Y seed: distribute within a padded vertical range and bias upward.
         if (!Number.isFinite(n.y)) {
-          const base = ((i + 1) / (m + 1)) * height;
-          const j = (jitter01(id, "y") - 0.5) * 120;
-          n.y = Math.max(24, Math.min(height - 24, base + j));
+          // Distribute within a padded vertical range and bias upward.
+          const padTop = Math.max(0, Number(SEED.padTop) || 0);
+          const padBottom = Math.max(0, Number(SEED.padBottom) || 0);
+          const rangeH = Math.max(1, height - padTop - padBottom);
+
+          const t = (i + 1) / (m + 1); // 0..1
+          const yPow = Math.max(0.25, Number(SEED.yPow) || 1);
+          const tp = Math.pow(t, yPow);
+
+          const base = padTop + tp * rangeH;
+          const j = (jitter01(id, "y") - 0.5) * (Number(SEED.jitterY) || 120);
+
+          // Keep seeds safely inside; later clampNodeToBounds() will apply DOM-accurate padding.
+          const hardTop = Math.max(12, padTop);
+          const hardBottom = Math.max(12, padBottom);
+          n.y = Math.max(hardTop, Math.min(height - hardBottom, base + j));
         }
 
         if (!Number.isFinite(n.vx)) n.vx = 0;
@@ -164,6 +196,13 @@ export function runSimulation({
         if (!Number.isFinite(n.__seedX)) n.__seedX = n.x;
         if (!Number.isFinite(n.__seedY)) n.__seedY = n.y;
       }
+    }
+    // Final sanity clamp for seeds (prevents any accidental NaN/Infinity propagation).
+    for (const n of nodes || []) {
+      if (!Number.isFinite(n.x)) n.x = width * 0.5;
+      if (!Number.isFinite(n.y)) n.y = height * 0.5;
+      if (!Number.isFinite(n.__seedX)) n.__seedX = n.x;
+      if (!Number.isFinite(n.__seedY)) n.__seedY = n.y;
     }
   }
 

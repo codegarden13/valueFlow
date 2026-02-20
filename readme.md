@@ -20,6 +20,10 @@ Aber nicht so - als **OLAP "light" für Menschen. 😎**
 
 ## Datenmodell
 
+```
+Quelle × Zeitraum × Kategorie × Buchungstyp
+```
+
 <details>
 <summary><strong>Mehrere universelle CSV‑Datenquellen</strong></summary>
 
@@ -30,12 +34,6 @@ Aber nicht so - als **OLAP "light" für Menschen. 😎**
 
 <details>
 <summary><strong>Analytisches Raster</strong></summary>
-
-Das vollständige Analysemodell lautet:
-
-```
-Quelle × Zeitraum × Kategorie × Buchungstyp
-```
 
 Die Quelle (CSV) ist ein gleichwertiger Filter- und Aggregations-Treiber  
 (z. B. sichtbar in Legend, Filter und Aggregationen).
@@ -57,7 +55,7 @@ Gegenpartei;Kostenart;Kategorie;Buchungstyp;Von;Bis;Jahr;Betrag;Menge;Einheit;St
 - Buchungstyp
 - mindestens eines der Datumsfelder: `Jahr` oder `Von/Bis`
 
-(Die CSV-Dateien werden als `Source` geführt und im Network-Graph visualisiert)
+(CSV-Dateien werden als `Source` geführt und im Network-Graph visualisiert)
 
 </details>
 

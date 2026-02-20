@@ -582,3 +582,33 @@ function formatNumber(n) {
     maximumFractionDigits: 2,
   }).format(Number.isFinite(n) ? n : 0);
 }
+
+/*setCtxTabUI(ctx) macht DOM-Queries (getElementById) und beschriftet ein Tab-UI-Element*/
+
+export function setCtxTabUI(ctx) {
+  const btn = document.getElementById("ctxTab");
+  if (!btn) return;
+
+  const mode = ctx?.state?.mode === "menge" ? "Menge" : "Kosten";
+
+  // Prefer the effective visible year range from state (already clamped in computeDerived)
+  const yf = Number(ctx?.state?.yearFrom);
+  const yt = Number(ctx?.state?.yearTo);
+
+  // Fallback: keep template label if we don't have a sane range
+  if (!Number.isFinite(yf) || !Number.isFinite(yt)) {
+    btn.textContent = "CTX - Kontext";
+    return;
+  }
+
+  const y0 = Math.min(yf, yt);
+  const y1 = Math.max(yf, yt);
+  const range = y0 === y1 ? String(y0) : `${y0}–${y1}`;
+
+  btn.textContent = `CTX (${range}, ${mode})`;
+  try {
+    btn.title = `Kontext-Tabelle: ${range} / ${mode}`;
+  } catch {
+    // ignore
+  }
+}

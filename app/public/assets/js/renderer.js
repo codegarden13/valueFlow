@@ -19,8 +19,10 @@
 import { mergeModels } from "./api.js";
 import { drawChart } from "./chart.js";
 import { renderLegend } from "./legend.js";
-import { cleanKey } from "./keys.js"; // NUR für Typen erlaubt!
+import { cleanKey } from "./keys.js"; // Typen
 import { aggregate } from "./aggregates.js";
+
+
 import {
   getVisibleYearRange,
   getVisibleCatsForRange,
@@ -31,10 +33,10 @@ import {
 } from "./view-derivations.js";
 import { createCategoryInspector } from "./categoryInspector.js";
 import { createBarHoverController } from "./barHoverController.js";
-import { syncUIFromState, renderSubtitle } from "./ui.js";
+import { syncUIFromState, renderSubtitle, setCtxTabUI } from "./ui.js";
 import { buildLegendGraph } from "./graphBuilder.js";
 import { buildColorByCat } from "./colorsByCat.js";
-import { renderDerivedIntoDom } from "./renderGenTables.js";
+import { renderDerivedIntoDom, renderCategoryDetailsIntoDom } from "./renderGenTables.js";
 
 // -----------------------------------------------------------------------------
 // Pure Helper (Renderer-intern)
@@ -54,7 +56,6 @@ function assertStringArray(name, arr) {
   return arr;
 }
 
-
 /** Stable Dedupe (case-sensitiv): behält Einfügereihenfolge, ändert Strings nicht. */
 function dedupeStable(arr) {
   const seen = new Set();
@@ -65,6 +66,18 @@ function dedupeStable(arr) {
     out.push(v);
   }
   return out;
+}
+
+/** Option-A Identity: String unverändert lassen; nur whitespace-only gilt als leer. */
+function asCatId(v) {
+  const s = typeof v === "string" ? v : "";
+  return s.trim().length ? s : "";
+}
+
+/** Normales Trim-String für nicht-Identity Felder (z.B. yearKey, typ). */
+function asTrimmed(v) {
+  const s = String(v ?? "").trim();
+  return s.length ? s : "";
 }
 
 
@@ -91,6 +104,159 @@ function ensureStableColorByCat(ctx, catsUniverse) {
   ctx.colors.catByCat = m;
   return m;
 }
+
+// -----------------------------------------------------------------------------
+// Merge cache (Renderer-intern)
+// - Ziel: mergeModels NICHT mehrfach pro redraw/build-token ausführen.
+// - Keying: ctx.flags.dataBuildToken + Auswahl-Signatur
+// -----------------------------------------------------------------------------
+function getMergeCache(ctx) {
+  if (!ctx) throw new Error("getMergeCache: ctx missing");
+  if (!ctx.__mergeCache || typeof ctx.__mergeCache !== "object") {
+    ctx.__mergeCache = { token: Symbol("init"), byKey: new Map() };
+  }
+
+  // dataBuildToken is the contract for RAW rebuilds (boot/load/filter that changes RAW)
+  const t = ctx?.flags?.dataBuildToken;
+  const token = Number.isFinite(Number(t)) ? Number(t) : 0;
+
+  // Reset cache when token changes
+  if (ctx.__mergeCache.token !== token) {
+    ctx.__mergeCache.token = token;
+    ctx.__mergeCache.byKey = new Map();
+  }
+
+  return ctx.__mergeCache.byKey;
+}
+
+function cachedMergeModels(ctx, key, models) {
+  const list = Array.isArray(models) ? models : [];
+  if (!list.length) return null;
+  if (list.length === 1) return list[0];
+
+  const cache = getMergeCache(ctx);
+  if (cache.has(key)) return cache.get(key);
+
+  const merged = mergeModels(list);
+  cache.set(key, merged);
+  return merged;
+}
+
+// -----------------------------------------------------------------------------
+// Kategorie-Tab UI (Label + Farbe)
+// - Der Tab bleibt im Template "dumm"; Styling erfolgt ausschließlich hier.
+// - Quelle der Farbe: ctx.derived.colorByCat (Map<cat, color>)
+// - Quelle der aktiven Kategorie: ctx.state.legendHighlightCat (gesetzt durch Legend-Hover-Bridge)
+// -----------------------------------------------------------------------------
+
+function getCategoryColor(ctx, cat) {
+  const c = asCatId(cat);
+  if (!c) return "";
+
+  const m = ctx?.derived?.colorByCat;
+  if (!(m instanceof Map)) return "";
+
+  const v = m.get(c);
+  return typeof v === "string" ? v : "";
+}
+
+function pickTextColor(bg) {
+  // Simple contrast heuristic; falls parsing fails, keep default.
+  const s = String(bg || "").trim();
+  if (!s) return "";
+
+  // Accept hex (#rgb/#rrggbb)
+  if (s[0] === "#") {
+    let r, g, b;
+    if (s.length === 4) {
+      r = parseInt(s[1] + s[1], 16);
+      g = parseInt(s[2] + s[2], 16);
+      b = parseInt(s[3] + s[3], 16);
+    } else if (s.length === 7) {
+      r = parseInt(s.slice(1, 3), 16);
+      g = parseInt(s.slice(3, 5), 16);
+      b = parseInt(s.slice(5, 7), 16);
+    }
+    if ([r, g, b].every((x) => Number.isFinite(x))) {
+      const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      return lum > 0.62 ? "#111" : "#fff";
+    }
+  }
+
+  // Accept rgb/rgba
+  const m = s.match(/rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (m) {
+    const r = Number(m[1]);
+    const g = Number(m[2]);
+    const b = Number(m[3]);
+    if ([r, g, b].every((x) => Number.isFinite(x))) {
+      const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      return lum > 0.62 ? "#111" : "#fff";
+    }
+  }
+
+  return "";
+}
+
+
+
+function setCategoryTabUI(ctx, cat) {
+  const btn = document.getElementById("categoryTab");
+
+  console.log("[setCategoryTabUI] called", {
+    incomingCat: cat,
+    normalizedCat: asCatId(cat),
+    activeCatState: ctx?.state?.activeCat,
+    buttonFound: !!btn
+  });
+
+  // Trace when called with an empty/cleared category
+  if (!asCatId(cat)) {
+    console.trace("[setCategoryTabUI] EMPTY cat callsite");
+  }
+
+  if (!btn) {
+    console.warn("[setCategoryTabUI] categoryTab button NOT found in DOM");
+    return;
+  }
+
+  const c = asCatId(cat);
+
+  // Label updates always (and title helps verify updates even if CSS hides changes).
+  btn.textContent = c || "Kategorie";
+  console.log("[setCategoryTabUI] textContent set to:", btn.textContent);
+  try {
+    btn.title = c || "";
+  } catch {
+    // ignore
+  }
+
+  // Clear styling if no active category.
+  if (!c) {
+    btn.style.removeProperty("background-color");
+    btn.style.removeProperty("border-color");
+    btn.style.removeProperty("color");
+    return;
+  }
+
+  const bg = getCategoryColor(ctx, c);
+  if (!bg) {
+    btn.style.removeProperty("background-color");
+    btn.style.removeProperty("border-color");
+    btn.style.removeProperty("color");
+    return;
+  }
+
+  // Force through Bootstrap/theme overrides.
+  btn.style.setProperty("background-color", bg, "important");
+  btn.style.setProperty("border-color", bg, "important");
+
+  const fg = pickTextColor(bg);
+  if (fg) btn.style.setProperty("color", fg, "important");
+  else btn.style.removeProperty("color");
+}
+
+
 
 
 
@@ -128,55 +294,61 @@ export function createRenderer() {
 // Hover UX controllers (Chart ↔ Legend Halo ↔ Legend highlight ↔ Inspector)
 // ---------------------------------------------------------------------------
 function getHoverUX(ctx) {
-  const CACHE_VERSION = 3; // bump when wiring changes
+  const CACHE_VERSION = 4; // bump when wiring changes
 
   if (ctx.__hoverUX && ctx.__hoverUX._v === CACHE_VERSION) return ctx.__hoverUX;
 
   const legendEl = ctx?.dom?.legendEl;
   if (!legendEl) throw new Error("getHoverUX: ctx.dom.legendEl missing");
 
-  const inspector = createCategoryInspector(ctx);
+  const inspector = createCategoryInspector(ctx, { syncTab: false });
 
   // Color resolver: prefer payload color, else derive from shared Map
   function getColor({ color, cat }) {
-    const c = String(color || "").trim();
+    const c = asTrimmed(color);
     if (c) return c;
 
-    const k = String(cat || "").trim();
+    const k = asCatId(cat);
     const m = ctx?.derived?.colorByCat;
-    if (m instanceof Map && k && m.has(k)) return m.get(k);
+    if (m instanceof Map && k) {
+      const v = m.get(k);
+      if (typeof v === "string" && v) return v;
+    }
 
     return "rgba(255,255,255,0.9)";
   }
 
-  /**
-   * Push hover model into the inspector.
-   * Critical: include yearKey/typ so the inspector can slice details precisely:
-   * `${yearKey}||${cat}||${typ}`
-   */
   function pushInspector(model) {
-    if (!model) {
-      inspector.clear();
-      return;
-    }
+    console.log("[pushInspector] model:", model);
+    const cat = asCatId(model?.cat);
+    console.log("[pushInspector] extracted cat:", cat);
 
-    // Category is mandatory for inspector.
-    const cat = String(model.cat || "").trim();
+    // No category -> clear hover UI + reset active selection.
     if (!cat) {
       inspector.clear();
+      ctx.state.activeCat = "";
+      setCategoryTabUI(ctx, "");
+      renderCategoryDetailsIntoDom(ctx);
       return;
     }
 
-    // Year/type are optional, but *if present* they must be forwarded.
-    // Note: barHoverController normalizes to `yearKey` + `typ`.
-    const yearKey = String(model.yearKey || model.year || model.jahr || "").trim();
-    const typ = String(model.typ || model.type || "").trim();
+    // Provide precise slice keys for inspector (hover table) so it can slice detailsByKey.
+    const yearKey = asTrimmed(model?.yearKey || model?.year || model?.jahr);
+    const typ = asTrimmed(model?.typ || model?.type);
 
     inspector.update({
       cat,
       ...(yearKey ? { yearKey } : null),
       ...(typ ? { typ } : null),
     });
+
+    // Keep renderer-owned selection in sync.
+    ctx.state.activeCat = cat;
+    console.log("[pushInspector] activeCat updated:", ctx.state.activeCat);
+    setCategoryTabUI(ctx, cat);
+
+    // Persistent Kategorie-Tab table (separate from inspector hover table)
+    renderCategoryDetailsIntoDom(ctx);
   }
 
   const hoverCtl = createBarHoverController({
@@ -198,6 +370,9 @@ function getHoverUX(ctx) {
   function applyLegendHighlight(cat) {
     // Strict: store identity string or null
     ctx.state.legendHighlightCat = cat;
+    ctx.state.activeCat = asCatId(cat);
+    setCategoryTabUI(ctx, ctx.state.activeCat);
+    renderCategoryDetailsIntoDom(ctx);
 
     // Fast path: if legend.js exposes a lightweight update API
     const api = legendEl.__legendApi;
@@ -211,8 +386,17 @@ function getHoverUX(ctx) {
   }
 
   function onLegendHighlight(e) {
-    const cat = e?.detail?.cat ?? null;
+    const catRaw = e?.detail?.cat ?? null;
+    const cat = catRaw == null ? null : String(catRaw);
     const year = e?.detail?.year ?? null;
+
+    // IMPORTANT UX:
+    // Legend/hover wiring can emit "empty" highlight payloads while moving between nodes.
+    // We do NOT want to reset the Kategorie tab label to the template word "Kategorie".
+    // Clearing can still be done explicitly by other controllers if desired.
+    if (cat == null || cat.trim() === "") {
+      return;
+    }
 
     // Persist hovered year (string/number) so legend can render `minYear–activeYear`.
     if (year != null && String(year).trim() !== "") {
@@ -284,13 +468,11 @@ async function computeDerived(ctx) {
     return m;
   };
 
-  const mergeIfNeeded = (models) => (models.length === 1 ? models[0] : mergeModels(models));
-
   // -------------------------------------------------------------------------
   // 1) Base model (Universe / Domain) from RAW models (unfiltered)
   // -------------------------------------------------------------------------
   const allModels = rawEntries.map((e, i) => requireModel(e, `allModels[${i}]`));
-  const base = mergeIfNeeded(allModels);
+  const base = cachedMergeModels(ctx, "base:allSources", allModels);
   if (!base) throw new Error("computeDerived: base model invalid");
 
   // -------------------------------------------------------------------------
@@ -365,6 +547,8 @@ async function computeDerived(ctx) {
       ? new Set(ctx.state.enabledSourceIds)
       : new Set(options.sources);
 
+  const enabledSourcesSig = Array.from(enabledSources).sort((a, b) => String(a).localeCompare(String(b), "de")).join("|");
+
   const sourceEntries = Array.from(rawBySource.entries()).filter(([sid]) => enabledSources.has(sid));
   if (!sourceEntries.length) {
     ctx.derived = { options, view: null, graph: null, aggregates: null, colorByCat };
@@ -383,7 +567,14 @@ async function computeDerived(ctx) {
 
   // Merge selected sources exactly once
   const selectedModels = sourceEntries.map(([, entry], i) => requireModel(entry, `selectedModels[${i}]`));
-  const mergedSelected = mergeIfNeeded(selectedModels);
+
+  // Optimization:
+  // - Wenn enabledSources == alle Quellen, ist mergedSelected identisch zu base.
+  // - Andernfalls: merge cached per enabledSourcesSig.
+  const allSourcesSelected = enabledSources.size === options.sources.length;
+  const mergedSelected = allSourcesSelected
+    ? base
+    : cachedMergeModels(ctx, `selected:${enabledSourcesSig}`, selectedModels);
   if (!mergedSelected) {
     ctx.derived = { options, view: null, graph: null, aggregates: null, colorByCat };
     return;
@@ -617,11 +808,7 @@ async function computeDerived(ctx) {
   async function redraw(ctx) {
     const dom = requireCtx(ctx);
 
-    console.log("renderer.js [redraw]", {
-      ready: ctx.flags?.ready,
-      hasRawBySource: ctx.raw?.bySource instanceof Map,
-      rawSources: ctx.raw?.bySource instanceof Map ? ctx.raw.bySource.size : null,
-    });
+    console.log("renderer.js [redraw]", { ready: ctx.flags?.ready, sources: ctx.raw?.bySource?.size ?? 0 });
 
     let phase = setPhase(ctx, "init");
 
@@ -630,8 +817,16 @@ async function computeDerived(ctx) {
       phase = setPhase(ctx, "computeDerived");
       await computeDerived(ctx);
       if (!ctx.derived) throw new Error("redraw: ctx.derived missing after computeDerived");
+
+      // Tabs (Labels) müssen nach jedem Re-Compute synchron sein.
+      setCtxTabUI(ctx);
+      setCategoryTabUI(ctx, ctx.state.activeCat);
+
       // CTX-Tab: derived als sortierbare Tabelle (Debug/Transparenz)
       renderDerivedIntoDom(ctx);
+
+      // Kategorie-Tab + Kategorie-Details: nach jedem Re-Compute synchronisieren (z.B. nach Filterwechsel)
+      renderCategoryDetailsIntoDom(ctx);
 
       const { options, view, graph, aggregates, colorByCat } = ctx.derived;
 
@@ -683,7 +878,9 @@ syncUI(ctx, uiOptions);
       if (!view || isModelEmpty(view)) {
         phase = setPhase(ctx, "renderNoData");
         renderNoDataForFilterState(ctx);
-        // CTX-Tab: keep CTX table fresh even when chart is empty
+
+        // Tabs + CTX table: keep consistent even when chart is empty
+        setCtxTabUI(ctx);
         renderDerivedIntoDom(ctx);
         return;
       }
