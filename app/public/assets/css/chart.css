@@ -1,7 +1,9 @@
 .kpi-chart .axis-x text {
-  font-size: 11px;
+  font-size: 17px;
+  color: var(--brand-accent);
 }
 
 .kpi-chart .axis-y text {
   font-size: 17px;
+  color: var(--brand-accent);
 }

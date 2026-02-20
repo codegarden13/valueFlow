@@ -196,9 +196,38 @@ export function renderHtmlNodes({
 
   const catBg = (catKey) => colorByCat?.get?.(catKey) || "rgba(16,24,40,0.10)";
 
+  const getFirstMapHit = (mapLike, keys, fallback = 0) => {
+    if (!mapLike || typeof mapLike.get !== "function") return fallback;
+    for (const k of keys) {
+      if (k == null) continue;
+      const kk = String(k);
+      if (!kk) continue;
+      if (mapLike.has?.(kk)) return mapLike.get(kk);
+      const v = mapLike.get(kk);
+      if (v != null) return v;
+    }
+    return fallback;
+  };
+
+  const stripPrefix = (id, prefix) => {
+    const s = String(id ?? "");
+    return s.startsWith(prefix) ? s.slice(prefix.length) : s;
+  };
+
   // SOURCE
   for (const node of sourceNodes) {
-    const total = sourceTotals?.get?.(String(node.sid)) ?? 0;
+    // NOTE: `sourceTotals` keys vary across versions (sid, id, label).
+    // Use the first key that matches to avoid showing `0 €` by accident.
+    const sourceKeyCandidates = [
+      node.sid,
+      node.sourceId,
+      node.source,
+      stripPrefix(node.id, "source:"),
+      stripPrefix(node.id, "src:"),
+      node.id,
+      node.label,
+    ];
+    const total = getFirstMapHit(sourceTotals, sourceKeyCandidates, 0);
     const totalStr = formatTotal(total, mode);
 
     const circle = el("div", "legend-node legend-node--source legend-node--type");

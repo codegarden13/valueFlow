@@ -296,7 +296,9 @@ export function runSimulation({
   focusForce.initialize = () => {};
 
   // ---- DOM-accurate edge trimming
-  const EDGE_PAD = 8;
+  // NOTE: EDGE_PAD defines the visual gap between a link and the node boundary.
+  // Keep it very small to avoid a "padding" effect at category nodes.
+  const EDGE_PAD = 2;
   const MEASURE_PAD = 10; // breathing room for glow/halo
 
   // Cache measured DOM half-sizes so we don't trigger layout on every tick.
@@ -381,7 +383,7 @@ export function runSimulation({
   function boundaryOffset(n, ux, uy) {
     const hs = getHalfSize(n);
     const dist = ellipseBoundaryDist(hs.rx, hs.ry, ux, uy);
-    return Math.max(6, dist - EDGE_PAD);
+    return Math.max(0, dist - EDGE_PAD);
   }
 
   const trimmedEndpoints = (src, dst) => {
