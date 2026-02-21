@@ -1,12 +1,8 @@
-# Themenbasierter KPI-Rechner über Zeiträume
+# ökonomisches Analysemodell - Wirkzusammenhang-Explorer über Zeiträume
 
 Interaktive Analyse von Kosten, Mengen, Erlösen und Ergebnissen über Jahre entlang **Quelle → Buchungstyp → Kategorie → wirtschaftliches Resultat** 
 
-Anwendung: Projektanalysen, Investitionsbewertungen, Kennzahlenvergleiche, Ergebnisorientierte Auswertungen
-
-*Das gibt es alles schon so irgendwie*. 
-
-Aber nicht so - als **OLAP "light" für Menschen. 😎**
+Anwendung: Projektanalysen, Investitionsbewertungen, Kennzahlenvergleiche, Ergebnisorientierte Auswertungen, Betriebsmodell-Viewer. **OLAP “light” für Menschen 😎**
 
 ![alt text](assets/legend_01.png)
 

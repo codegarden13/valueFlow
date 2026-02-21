@@ -1,0 +1,7 @@
+Gegenpartei;Kostenart;Kategorie;Buchungstyp;Von;Bis;Jahr;Betrag;Menge;Einheit;Status;Memo
+
+
+Vermieterin;Kaltmiete;Miete;Konsum;01.01.2025;31.01.2025;2025;-950.00;1;Monat;;
+Vermieterin;Kaltmiete;Miete;Konsum;01.02.2025;30.02.2025;2025;-950.00;1;Monat;;
+Supermarkt;Lebensmittel Einkauf;Lebensmittel;Konsum;10.01.2025;;2025;-86.40;24;Artikel;;
+Versicherung AG;Haftpflicht Jahresbeitrag;Versicherung;Konsum;01.01.2025;31.12.2025;2025;-120.00;1;Jahr;;

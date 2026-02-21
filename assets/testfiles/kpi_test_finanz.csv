@@ -1,0 +1,50 @@
+Gegenpartei;Kostenart;Kategorie;Buchungstyp;Von;Bis;Jahr;Betrag;Menge;Einheit;Status;afa_kategorie;steuerart;Memo
+Finanzamt;Einkommensteuer Vorauszahlung;Steuern;Analyse;10.03.2023;;2023;-500.00;1;Pauschal;;
+Finanzamt;Einkommensteuer Vorauszahlung;Steuern;Analyse;10.03.2023;;2023;-500.00;1;Pauschal;;
+
+DRV;Rentenwert West;Rente;Analyse;01.07.1985;30.06.1986;1985;17.32;1;Rentenwert/Monat;;
+DRV;Rentenwert West;Rente;Analyse;01.07.1986;30.06.1987;1986;17.82;1;Rentenwert/Monat;;
+DRV;Rentenwert West;Rente;Analyse;01.07.1987;30.06.1988;1987;18.50;1;Rentenwert/Monat;;
+DRV;Rentenwert West;Rente;Analyse;01.07.1988;30.06.1989;1988;19.06;1;Rentenwert/Monat;;
+DRV;Rentenwert West;Rente;Analyse;01.07.1989;30.06.1990;1989;19.63;1;Rentenwert/Monat;;
+DRV;Rentenwert West;Rente;Analyse;01.07.1990;30.06.1991;1990;20.24;1;Rentenwert/Monat;;
+DRV;Rentenwert West;Rente;Analyse;01.07.1991;30.06.1992;1991;21.19;1;Rentenwert/Monat;;
+DRV;Rentenwert West;Rente;Analyse;01.07.1992;30.06.1993;1992;21.80;1;Rentenwert/Monat;;
+DRV;Rentenwert West;Rente;Analyse;01.07.1993;30.06.1994;1993;22.76;1;Rentenwert/Monat;;
+DRV;Rentenwert West;Rente;Analyse;01.07.1994;30.06.1995;1994;23.53;1;Rentenwert/Monat;;
+DRV;Rentenwert West;Rente;Analyse;01.07.1995;30.06.1996;1995;23.65;1;Rentenwert/Monat;;
+DRV;Rentenwert West;Rente;Analyse;01.07.1996;30.06.1997;1996;23.87;1;Rentenwert/Monat;;
+
+
+
+DRV; 1997;Rente;Analyse;01.07.1997;30.06.1998;1997;24.27;11;Rentenwert/Monat;;#TODO:Prüfen
+DRV; West;Rente;Analyse;01.07.1998;30.06.1999;1998;24.37;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.1999;30.06.2000;1999;24.70;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2000;30.06.2001;2000;24.85;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2001;30.06.2002;2001;25.32;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2002;30.06.2003;2002;25.86;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2003;30.06.2004;2003;26.13;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2004;30.06.2005;2004;26.13;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2005;30.06.2006;2005;26.13;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2006;30.06.2007;2006;26.13;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2007;30.06.2008;2007;26.27;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2008;30.06.2009;2008;26.56;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2009;30.06.2010;2009;27.20;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2010;30.06.2011;2010;27.20;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2011;30.06.2012;2011;27.47;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2012;30.06.2013;2012;28.07;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2013;30.06.2014;2013;28.14;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2014;30.06.2015;2014;28.61;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2015;30.06.2016;2015;29.21;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2016;30.06.2017;2016;30.45;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2017;30.06.2018;2017;31.03;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2018;30.06.2019;2018;32.03;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2019;30.06.2020;2019;33.05;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2020;30.06.2021;2020;34.19;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2021;30.06.2022;2021;34.19;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2022;30.06.2023;2022;36.02;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2023;30.06.2024;2023;37.60;12;Rentenwert/Monat;;
+DRV; West;Rente;Analyse;01.07.2024;30.06.2025;2024;39.32;12;Rentenwert/Monat;;
+DRV;Agentur für Arbeit;Rente;Analyse;01.07.2025;30.06.2026;2025;40.79;12;Rentenwert/Monat;;
+
+Eichele;Tanken;Treibstoff;OPEX;;16.02.2026;;23.71;-1.689;EUR/Liter;;
