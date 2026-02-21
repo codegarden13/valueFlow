@@ -23,3 +23,6 @@ app/node_modules
 
 
 _unused/
+
+/assets/testfiles/*.csv
+
