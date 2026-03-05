@@ -328,13 +328,21 @@ export function drawChart({ svgEl, rootEl, data, state, colorByCat, onBarHover }
 
       const gType = gYear.append("g").attr("transform", `translate(${xT},0)`);
 
-      // Two-layer rendering:
-      // - visible bar: accurate geometry, animated
-      // - hit rect: transparent, min height, reliable pointer events
+      // Layers (DOM order = paint order): bars -> hit targets -> labels
       const gVis = gType.append("g").attr("class", "bars-vis");
       const gHit = gType.append("g").attr("class", "bars-hit");
 
       const keyFn = (d) => `${d.yearKey}||${d.type}||${d.cat}`;
+
+      // Label positioning (always visible above the bar, regardless of bar height)
+      const LABEL_OFFSET_PX = 8;
+      const labelY = (d) => {
+        const { v, yTop } = barGeom(d);
+        // Positive: above bar top; Negative: above baseline
+        const yAt = v >= 0 ? yTop : y0;
+        const yLbl = yAt - LABEL_OFFSET_PX;
+        return Math.max(margin.top + 10, yLbl);
+      };
 
       const bars = gVis
         .selectAll("rect.bar")
@@ -419,6 +427,50 @@ export function drawChart({ svgEl, rootEl, data, state, colorByCat, onBarHover }
               .style("pointer-events", "all"),
           (exit) => exit.remove()
         );
+
+      // Append labels LAST so they render above bars/hit rects
+      const gLabels = gType.append("g").attr("class", "bar-labels");
+
+      // Labels: always visible above the bar, colored by category, rotated -90° (vertical)
+      gLabels
+        .selectAll("text.bar-cat-label")
+        .data(rowsT, keyFn)
+        .join(
+          (enter) =>
+            enter
+              .append("text")
+              .attr("class", "bar-cat-label")
+              .attr("fill", (d) => colorByCat.get(d.cat) || "#111")
+              .attr("x", 0)
+              .attr("y", 0)
+              .attr("text-anchor", "middle")
+              .attr("dominant-baseline", "middle")
+              .attr("transform", (d) => {
+                const x = xCat(d.cat) + xCat.bandwidth() / 2;
+                const yv = labelY(d);
+                return `translate(${x},${yv}) rotate(-90)`;
+              })
+              .style("pointer-events", "none")
+              .text((d) => String(d.cat || "")),
+          (update) =>
+            update
+              .attr("fill", (d) => colorByCat.get(d.cat) || "#111")
+              .attr("x", 0)
+              .attr("y", 0)
+              .attr("text-anchor", "middle")
+              .attr("dominant-baseline", "middle")
+              .attr("transform", (d) => {
+                const x = xCat(d.cat) + xCat.bandwidth() / 2;
+                const yv = labelY(d);
+                return `translate(${x},${yv}) rotate(-90)`;
+              })
+              .style("pointer-events", "none")
+              .text((d) => String(d.cat || "")),
+          (exit) => exit.remove()
+        );
+
+      // Defensive: keep labels above even if future code appends more layers
+      gLabels.raise();
 
       // IMPORTANT: emit hover on enter + move so controller always has a fresh event.
       // Attach handlers to hit rects (not visible bars).

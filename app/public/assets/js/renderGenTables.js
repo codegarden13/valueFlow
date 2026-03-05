@@ -6,6 +6,10 @@
 // - Ohne Dependencies, ohne Inline-Styles
 // -----------------------------------------------------------------------------
 
+// NOTE: UI-only enrichment. We keep all financial formulas in a dedicated module.
+// This file is just a renderer/formatter that may call calculators to add columns.
+import { berechneRente, calcSozialabgaben } from "./taxEngineDE.js";
+
 // -----------------------------------------------------------------------------
 // Public API
 // -----------------------------------------------------------------------------
@@ -308,6 +312,64 @@ function escapeHtml(v) {
 }
 
 // -----------------------------------------------------------------------------
+// Bruttolohn enrichment helpers
+// -----------------------------------------------------------------------------
+// Goal: derive (amount, unit, monthsWorked, year) from heterogeneous row schemas.
+// We intentionally support multiple field names so the renderer remains resilient
+// across different upstream data sources / adapters.
+
+function toNumber(v) {
+  if (v == null) return NaN;
+  if (typeof v === "number") return v;
+  if (typeof v === "string") {
+    // Support both German and EN number formats:
+    // - "1.234,56" -> 1234.56
+    // - "1234.56"  -> 1234.56
+    const s = v.trim().replace(/\s+/g, "");
+    const de = s.replace(/\./g, "").replace(",", ".");
+    const n = Number(de);
+    return Number.isFinite(n) ? n : NaN;
+  }
+  return NaN;
+}
+
+function yearFromDateLike(v) {
+  if (!v) return NaN;
+  if (v instanceof Date) return v.getFullYear();
+  if (typeof v === "string") {
+    const t = Date.parse(v);
+    if (Number.isFinite(t)) return new Date(t).getFullYear();
+    // Fallback: find first 4-digit year.
+    const m = v.match(/(19\d{2}|20\d{2})/);
+    return m ? Number(m[1]) : NaN;
+  }
+  if (typeof v === "number") {
+    // Epoch ms
+    if (v > 1e11) return new Date(v).getFullYear();
+    // Direct year
+    if (v >= 1900 && v <= 2100) return Math.floor(v);
+  }
+  return NaN;
+}
+
+function roundMaybe(x, digits = 2) {
+  if (!Number.isFinite(x)) return x;
+  const p = Math.pow(10, digits);
+  return Math.round((x + Number.EPSILON) * p) / p;
+}
+
+function normalizeUnit(raw) {
+  const s = String(raw ?? "year").toLowerCase();
+  // Accept: month, monat, m
+  if (s.startsWith("m")) return "month";
+  return "year";
+}
+
+function normalizeRegion(raw) {
+  return String(raw ?? "WEST").toUpperCase() === "OST" ? "OST" : "WEST";
+}
+
+// -----------------------------------------------------------------------------
 // Kategorie-Tab: Detail-Tabelle für die aktuell hervorgehobene Kategorie
 // - Erwartet ctx.state.activeCat als Option-A Identity String (whitespace-sensitiv)
 // - Datengrundlage: ctx.derived.view.detailsByKey (bereits gefiltert durch View)
@@ -342,16 +404,138 @@ export function renderCategoryDetailsIntoDom(ctx, opts = {}) {
 
   // Option A: Kategorie ist Identität → KEIN trim/cleanKey.
   const rows = all.filter((r) => {
-    const c = r?.cat ?? r?.category ?? r?.kategorie;
+    const c = r?.cat ?? r?.category ?? r?.Kategorie;
     return c === activeCat;
   });
+
+  // ---------------------------------------------------------------------------
+  // Special view: Bruttolohn
+  // ---------------------------------------------------------------------------
+  // When the user hovers the category "Bruttolohn" we want to show derived metrics
+  // (earned pension, social contributions, later: taxes) instead of only raw fields.
+  //
+  // This is intentionally a *presentation* concern:
+  // - We do NOT mutate ctx.derived.
+  // - We derive additional columns for the table renderer only.
+  const isBruttolohn = activeCat === "Bruttolohn";
+
+  const enrichedRows = !isBruttolohn
+    ? rows
+    : rows.map((r) => {
+        // 1) Amount (EUR)
+        // Try common field names used across adapters.
+        const amount = toNumber(
+          r?.betrag ?? r?.amount ?? r?.value ?? r?.brutto ?? r?.bruttolohn ?? r?.val
+        );
+
+        // 2) Unit & monthsWorked
+        const unit = normalizeUnit(r?.unit ?? r?.einheit ?? r?.periode);
+
+        // monthsWorked:
+        // - If the row says "7 Monate gearbeitet", it can come in as monthsWorked/monate/anzahl.
+        // - Default to 12 for annual values.
+        const monthsWorked = Math.max(
+          1,
+          Math.min(12, Math.floor(toNumber(r?.monthsWorked ?? r?.monate ?? r?.anzahl) || 12))
+        );
+
+        // 3) Year (calendar year) – from explicit fields or from a date-like field.
+        const y =
+          Math.floor(toNumber(r?.jahr ?? r?.year) || 0) ||
+          yearFromDateLike(r?.date ?? r?.datum ?? r?.bookingDate ?? r?.time);
+        const calcYear = Number.isFinite(y) && y >= 1900 ? y : new Date().getFullYear();
+
+        // Region (currently only relevant for rent calc West/Ost; SV is mostly meta)
+        const region = normalizeRegion(r?.region);
+
+        // If amount missing, keep the row but annotate.
+        if (!Number.isFinite(amount)) {
+          return {
+            ...r,
+            __hint: "Bruttolohn enrichment: no numeric amount found (expected betrag/amount/value/brutto).",
+          };
+        }
+
+        // --- Calculations ------------------------------------------------------
+        // Pension: monthly pension amount generated by this income.
+        let rente;
+        try {
+          rente = berechneRente(amount, {
+            jahr: calcYear,
+            region,
+            unit,
+            monthsWorked,
+          });
+        } catch (e) {
+          rente = { error: e?.message ?? String(e) };
+        }
+
+        // Social contributions: returns month + period.
+        let sv;
+        try {
+          sv = calcSozialabgaben(amount, {
+            year: calcYear,
+            region,
+            unit,
+            monthsWorked,
+            // Optional per-row overrides if present:
+            kvZusatzbeitrag: r?.kvZusatzbeitrag,
+            kinderUnter25: r?.kinderUnter25,
+            kinderlos: r?.kinderlos,
+            sachsen: r?.sachsen,
+          });
+        } catch (e) {
+          sv = { error: e?.message ?? String(e) };
+        }
+
+        // --- Derived columns ---------------------------------------------------
+        // Convention:
+        // - *_monat_EUR: monthly view (month)
+        // - *_periode_EUR: totals for the period (period)
+        const svMonthAN = sv?.month?.arbeitnehmer?.summe;
+        const svMonthAG = sv?.month?.arbeitgeber?.summe;
+        const svMonthTotal = sv?.month?.gesamt?.summe;
+
+        const svPeriodAN = sv?.period?.arbeitnehmer?.summe;
+        const svPeriodAG = sv?.period?.arbeitgeber?.summe;
+        const svPeriodTotal = sv?.period?.gesamt?.summe;
+
+        return {
+          ...r,
+          // Inputs (normalized)
+          jahr: calcYear,
+          input_unit: unit,
+          input_monthsWorked: monthsWorked,
+          input_region: region,
+
+          // Pension
+          erarbeiteteRenteMonat_EUR: Number.isFinite(rente?.renteMonat) ? rente.renteMonat : "",
+          entgeltpunkte: Number.isFinite(rente?.entgeltpunkte)
+            ? roundMaybe(rente.entgeltpunkte, 6)
+            : "",
+
+          // Social contributions (month)
+          sv_AN_monat_EUR: Number.isFinite(svMonthAN) ? svMonthAN : "",
+          sv_AG_monat_EUR: Number.isFinite(svMonthAG) ? svMonthAG : "",
+          sv_gesamt_monat_EUR: Number.isFinite(svMonthTotal) ? svMonthTotal : "",
+
+          // Social contributions (period)
+          sv_AN_periode_EUR: Number.isFinite(svPeriodAN) ? svPeriodAN : "",
+          sv_AG_periode_EUR: Number.isFinite(svPeriodAG) ? svPeriodAG : "",
+          sv_gesamt_periode_EUR: Number.isFinite(svPeriodTotal) ? svPeriodTotal : "",
+
+          // Diagnostics (keep separate so users can spot issues)
+          __rente_err: rente?.error ?? "",
+          __sv_err: sv?.error ?? "",
+        };
+      });
 
   const st = (root.__tableState ||= {
     sortKey: null,
     sortDir: "asc",
   });
 
-  renderTable(root, rows, {
+  renderTable(root, enrichedRows, {
     sortKey: st.sortKey,
     sortDir: st.sortDir,
     onSort: (key) => {

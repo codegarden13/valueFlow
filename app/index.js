@@ -24,28 +24,23 @@ const __dirname = path.dirname(__filename);
 const configPath = path.join(__dirname, "config.json");
 
 // -----------------------------------------------------------------------------
-// 1) Config Normalisierung
+// 1) Config Normalisierung (vereinfacht)
 // -----------------------------------------------------------------------------
-function normalizeConfig(cfgRaw) {
-  const port = Number(cfgRaw?.port) || 3044;
-  const delimiter = String(cfgRaw?.delimiter || ";");
+function normalizeConfig(cfgRaw = {}) {
+  const port = Number(cfgRaw.port) || 3044;
+  const delimiter = String(cfgRaw.delimiter || ";");
 
-  // Neues Format: sources[]
-  let sources = Array.isArray(cfgRaw?.sources) ? cfgRaw.sources : [];
-
-  sources = sources
-    .map((s, i) => ({
-      id: String(s?.id ?? `src${i}`).trim(),
-      label: String(s?.label ?? s?.id ?? `Source ${i + 1}`).trim(),
-      path: String(s?.path ?? "").trim(),
-    }))
-    .filter((s) => s.id && s.path);
-
-  // Abwärtskompatibilität: altes Format csvPath
-  const legacyPath = String(cfgRaw?.csvPath || "").trim();
-  if (sources.length === 0 && legacyPath) {
-    sources = [{ id: "default", label: "Default", path: legacyPath }];
-  }
+  // Erwartet: sources: [{ id, label?, path }]
+  const sources = Array.isArray(cfgRaw.sources)
+    ? cfgRaw.sources
+        .map((s, i) => {
+          const id = String(s?.id || `src${i + 1}`).trim();
+          const label = String(s?.label || id).trim();
+          const p = String(s?.path || "").trim();
+          return p ? { id, label, path: p } : null;
+        })
+        .filter(Boolean)
+    : [];
 
   return { port, delimiter, sources };
 }
@@ -124,29 +119,29 @@ app.use("/api", (req, _res, next) => {
 // 5) API Endpoints
 // -----------------------------------------------------------------------------
 
-// Health
-app.get("/api/health", (_req, res) => {
-  const cfg = loadConfig();
-  res.json({
+function buildConfigResponse(cfg, includePath = false) {
+  const base = {
     ok: true,
     port: cfg.port,
     delimiter: cfg.delimiter,
     sources: cfg.sources.map((s) => ({ id: s.id, label: s.label })),
     defaultSource: cfg.sources[0]?.id ?? null,
-    configPath,
-  });
+  };
+
+  if (includePath) base.configPath = configPath;
+  return base;
+}
+
+// Health
+app.get("/api/health", (_req, res) => {
+  const cfg = loadConfig();
+  res.json(buildConfigResponse(cfg, true));
 });
 
 // Config fürs Frontend
 app.get("/api/config", (_req, res) => {
   const cfg = loadConfig();
-  res.json({
-    ok: true,
-    port: cfg.port,
-    delimiter: cfg.delimiter,
-    sources: cfg.sources.map((s) => ({ id: s.id, label: s.label })),
-    defaultSource: cfg.sources[0]?.id ?? null,
-  });
+  res.json(buildConfigResponse(cfg));
 });
 
 // Daten-Endpunkt (Quelle selektierbar)
@@ -156,7 +151,7 @@ app.get("/api/data", (req, res) => {
   if (!cfg.sources.length) {
     return res.status(400).json({
       ok: false,
-      error: "No sources configured. Add sources[] (or legacy csvPath) in app/config.json.",
+      error: "No sources configured. Add sources[] in app/config.json.",
     });
   }
 

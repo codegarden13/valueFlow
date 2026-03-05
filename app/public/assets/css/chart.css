@@ -7,3 +7,22 @@
   font-size: 17px;
   color: var(--brand-accent);
 }
+
+/* --------------------------------------------------
+   Bar category labels: improve contrast on same-color bars
+-------------------------------------------------- */
+.kpi-chart .bar-cat-label {
+  font-size: 14px;
+  font-weight: 600;
+
+  /* Subtle glow for readability on same-colored backgrounds */
+  text-shadow:
+    0 0 2px rgba(0,0,0,0.9),
+    0 0 4px rgba(0,0,0,0.6);
+
+  /* SVG stroke outline fallback (works better than shadow in some browsers) */
+  paint-order: stroke fill;
+  stroke: rgba(0,0,0,0.85);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}

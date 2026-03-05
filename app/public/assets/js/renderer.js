@@ -257,10 +257,6 @@ function setCategoryTabUI(ctx, cat) {
 }
 
 
-
-
-
-
 // -----------------------------------------------------------------------------
 // Factory
 // -----------------------------------------------------------------------------
@@ -439,11 +435,57 @@ function getHoverUX(ctx) {
 
 // ---------------------------------------------------------------------------
 // computeDerived(ctx) – STRICT / Option A
-// - Categories are identities (no normalization beyond required string checks)
-// - Types are normalized via cleanKey
-// - View is year-filtered; Legend graph includes undated regardless of year-range
-// - Planned relations are legend-only and MUST NOT affect bars/totals
-// - NEW: colorByCat is a single source of truth (Chart + Legend) and MUST be stable
+//
+// PURPOSE
+// - Build *all* derived state in one deterministic pass.
+// - Single source of truth for:
+//   - options (dropdown universes + year domain)
+//   - view (the model used for chart bars)
+//   - aggregates (the numbers used for legend totals + UI totals)
+//   - graph (legend network)
+//   - colorByCat (shared stable category color mapping)
+//
+// INPUT CONTRACT (ctx)
+// - ctx.raw.bySource: Map<sourceId, { sid, text, delimiter, model }>
+//   - model must include arrays: model.bars[], model.cats[], model.types[] (or compatible)
+//   - Each bar is an object with at least:
+//     - year: number | string (dated bars); may be missing/NaN for undated
+//     - type/typ: string (will be normalized via cleanKey)
+//     - cat: string (Category ID, **identity string**, not normalized)
+//     - value fields used by aggregates.js (e.g. amount/betrag, qty/menge, etc.)
+//
+// IDENTITY & NORMALIZATION RULES
+// - Categories (bar.cat) are IDENTITIES:
+//   - case-/whitespace-/unicode-sensitive
+//   - renderer MUST NOT normalize categories
+//   - only invalid/empty categories are rejected ("" / whitespace-only)
+// - Types (bar.type / bar.typ) are CANONICAL KEYS:
+//   - normalized via cleanKey()
+//
+// FILTERING RULES (order matters)
+// 1) Universe (base) is built from *all sources* (unfiltered)
+// 2) enabledSources: ctx.state.enabledSourceIds (empty => all)
+// 3) enabledTypes:   ctx.state.enabledTypes     (empty => all)
+// 4) Year range (ctx.state.yearFrom/yearTo) clamps view for DATED bars
+// 5) disabledCats (ctx.state.disabledCats) removes categories from view/bars
+//
+// OUTPUT CONTRACT (ctx.derived)
+// - ctx.derived = { options, view, graph, aggregates, colorByCat }
+//   - options:
+//     - yearDomain: {minY,maxY}
+//     - yearBounds: {yf,yt} (clamped, effective)
+//     - universe: { types: string[], cats: string[] } (stable, full)
+//     - inRange:   { types: string[], cats: string[] } (year-range-limited, DATED only)
+//     - sources: string[] (stable)
+//     - types/cats: alias to inRange.* for UI dropdown contract
+//   - colorByCat: Map<cat, color> (stable across redraws unless universe changes)
+//   - view: model for chart bars (respects enabledSources + enabledTypes + year range + disabledCats)
+//   - aggregates:
+//     - totalsByCat: Map<cat, number>
+//     - totalsBySource: Map<sourceId, number>
+//     - MUST match the currently active filters (enabled sources/types + enabled cats)
+//       so category/source nodes never sum “hidden” data.
+//   - graph: legend network (may include planned/undated nodes; must NOT affect bars/totals)
 // ---------------------------------------------------------------------------
 async function computeDerived(ctx) {
   // -------------------------------------------------------------------------
@@ -659,10 +701,24 @@ async function computeDerived(ctx) {
   // -------------------------------------------------------------------------
   // 5) Central aggregates (single source of truth for totals + UI universes)
   // -------------------------------------------------------------------------
+  // Build aggregate rows aligned with active filters.
+  // IMPORTANT: category/source totals must never include hidden sources/types/cats,
+  // otherwise Kategorie-Nodes look “too high” compared to visible bars.
   const rows = [];
   for (const [sid, entry] of rawBySource.entries()) {
+    if (!enabledSources.has(sid)) continue;
+
     const bars = Array.isArray(entry?.model?.bars) ? entry.model.bars : [];
-    for (const b of bars) rows.push({ ...b, sourceId: sid });
+    for (const b of bars) {
+      const t = cleanKey(b?.type ?? b?.typ);
+      if (!t || !enabledTypes.has(t)) continue;
+
+      const c = b?.cat;
+      if (typeof c !== "string" || !c.length) continue;
+      if (!enabledCatSet.has(c)) continue;
+
+      rows.push({ ...b, type: t, sourceId: sid });
+    }
   }
 
   const aggregates = aggregate({ rows }, ctx.state);

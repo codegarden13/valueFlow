@@ -37,6 +37,8 @@ Die Quelle (CSV) ist ein gleichwertiger Filter- und Aggregations-Treiber
 </details>
 
 <details>
+
+
 <summary><strong>Erwartete CSV-Struktur: Beliebige zusätzliche Spalten sind erlaubt.</strong></summary>
 
 **Semikolon-separiert:**
@@ -46,6 +48,7 @@ Gegenpartei;Kostenart;Kategorie;Buchungstyp;Von;Bis;Jahr;Betrag;Menge;Einheit;St
 ```
 
 **Minimal erforderlich pro Datensatz:**
+
 - Betrag
 - Kategorie
 - Buchungstyp
