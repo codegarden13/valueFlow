@@ -23,26 +23,37 @@ const __dirname = path.dirname(__filename);
 // Achtung: Datei liegt im selben Verzeichnis wie index.js
 const configPath = path.join(__dirname, "config.json");
 
+function normalizeSource(s, fallbackId) {
+  const path = String(s?.path || "").trim();
+  if (!path) return null;
+
+  const id = String(s?.id || fallbackId).trim();
+  const label = String(s?.label || id).trim();
+
+  return { id, label, path };
+}
+
+function normalizeSources(rawSources) {
+  const list = Array.isArray(rawSources) ? rawSources : [];
+  const out = [];
+
+  for (let i = 0; i < list.length; i++) {
+    const src = normalizeSource(list[i] || {}, `src${i + 1}`);
+    if (src) out.push(src);
+  }
+
+  return out;
+}
+
 // -----------------------------------------------------------------------------
 // 1) Config Normalisierung (vereinfacht)
 // -----------------------------------------------------------------------------
 function normalizeConfig(cfgRaw = {}) {
-  const port = Number(cfgRaw.port) || 3044;
-  const delimiter = String(cfgRaw.delimiter || ";");
-
-  // Erwartet: sources: [{ id, label?, path }]
-  const sources = Array.isArray(cfgRaw.sources)
-    ? cfgRaw.sources
-        .map((s, i) => {
-          const id = String(s?.id || `src${i + 1}`).trim();
-          const label = String(s?.label || id).trim();
-          const p = String(s?.path || "").trim();
-          return p ? { id, label, path: p } : null;
-        })
-        .filter(Boolean)
-    : [];
-
-  return { port, delimiter, sources };
+  return {
+    port: Number(cfgRaw.port) || 3044,
+    delimiter: String(cfgRaw.delimiter || ";"),
+    sources: normalizeSources(cfgRaw.sources),
+  };
 }
 
 // -----------------------------------------------------------------------------
