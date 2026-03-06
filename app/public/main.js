@@ -31,75 +31,79 @@ const { redraw } = createRenderer();
 // - Während Boot/Wiring wird nur "needed" markiert, nicht gerendert
 // - Parallele Redraws werden zusammengefasst
 // - Render immer im nächsten Animation-Frame
-export function requestRedraw(ctx) {
-  console.log("main.js - [requestRedraw] called");
+function getFlags(ctx) {
+  if (!ctx || !ctx.flags) {
+    throw new Error("requestRedraw(ctx): ctx.flags missing");
+  }
+  return ctx.flags;
+}
 
-  if (!ctx?.flags) throw new Error("requestRedraw(ctx): ctx.flags missing");
-
-  const flags = ctx.flags;
-
-  // Init Flags (idempotent)
+function initRedrawFlags(flags) {
   if (typeof flags.redrawScheduled !== "boolean") flags.redrawScheduled = false;
   if (typeof flags.redrawInFlight !== "boolean") flags.redrawInFlight = false;
   if (typeof flags.redrawNeeded !== "boolean") flags.redrawNeeded = false;
+}
 
-  // Immer: wir brauchen (mindestens) ein Redraw
-  flags.redrawNeeded = true;
+function logRedrawError(ctx, phase, err) {
+  console.groupCollapsed(
+    `%credraw(ctx) failed in phase: ${phase}`,
+    "color:#d92d20;font-weight:700"
+  );
+  console.error(err);
+  console.error("stack:", err?.stack || "(no stack)");
+  console.log("phase:", phase);
+  console.log("ctx.flags:", ctx.flags);
+  console.log("ctx.state:", ctx.state);
+  console.log("ctx.data:", ctx.data);
+  console.log("ctx.dataAll:", ctx.dataAll);
+  console.log("ctx.derived:", ctx.derived);
+  console.groupEnd();
+}
 
-  // Während Boot nicht rendern – nur merken
-  if (flags.ready === false) return;
+async function runRedraw(ctx, flags) {
+  const phase = "redraw:start";
 
-  // Wenn bereits ein Frame geplant ist, reicht das
-  if (flags.redrawScheduled) return;
+  try {
+    await redraw(ctx);
+  } catch (err) {
+    logRedrawError(ctx, phase, err);
+  } finally {
+    flags.redrawInFlight = false;
 
+    if (flags.redrawNeeded && flags.ready !== false) {
+      requestRedraw(ctx);
+    }
+  }
+}
+
+function scheduleRedraw(ctx, flags) {
   flags.redrawScheduled = true;
 
   requestAnimationFrame(() => {
-    // rAF-Planung ist "verbraucht"
     flags.redrawScheduled = false;
 
-    // Wenn Boot zwischenzeitlich wieder gesperrt wurde (sehr selten, aber robust)
     if (flags.ready === false) return;
-
-    // Wenn gerade gerendert wird: wir lassen redrawNeeded=true stehen.
-    // Der laufende Render wird am Ende einen neuen Frame anstoßen.
     if (flags.redrawInFlight) return;
 
-    // Snapshot: wir erfüllen jetzt das aktuell bekannte "needed"
     flags.redrawNeeded = false;
     flags.redrawInFlight = true;
 
-    let phase = "init";
-
-    (async () => {
-      try {
-        phase = "redraw:start";
-        await redraw(ctx);
-      } catch (err) {
-        console.groupCollapsed(
-          `%credraw(ctx) failed in phase: ${phase}`,
-          "color:#d92d20;font-weight:700"
-        );
-        console.error(err);
-        console.error("stack:", err?.stack || "(no stack)");
-        console.log("phase:", phase);
-        console.log("ctx.flags:", ctx.flags);
-        console.log("ctx.state:", ctx.state);
-        console.log("ctx.data:", ctx.data);
-        console.log("ctx.dataAll:", ctx.dataAll);
-        console.log("ctx.derived:", ctx.derived);
-        console.groupEnd();
-      } finally {
-        flags.redrawInFlight = false;
-
-        // Falls während des redraw neue Requests kamen:
-        // -> im nächsten Frame erneut rendern (coalesced)
-        if (flags.redrawNeeded && flags.ready !== false) {
-          requestRedraw(ctx);
-        }
-      }
-    })();
+    runRedraw(ctx, flags);
   });
+}
+
+export function requestRedraw(ctx) {
+  console.log("main.js - [requestRedraw] called");
+
+  const flags = getFlags(ctx);
+  initRedrawFlags(flags);
+
+  flags.redrawNeeded = true;
+
+  if (flags.ready === false) return;
+  if (flags.redrawScheduled) return;
+
+  scheduleRedraw(ctx, flags);
 }
 
 // -----------------------------------------------------------------------------
@@ -117,20 +121,20 @@ export function requestRedraw(ctx) {
     // -------------------------------------------------------------------------
     // UI initialisieren (fail fast)
     // -------------------------------------------------------------------------
-    initUI(ctx);                  // DOM-Vertrag prüfen
+    initUI(ctx); // DOM-Vertrag prüfen
     ctx.ui = wireFilterDropdowns(ctx); // Filter-Events + Render-API
-    wireModeAndYears(ctx);        // Mode + Year-Events
+    wireModeAndYears(ctx); // Mode + Year-Events
 
     // -------------------------------------------------------------------------
     // Initialer Render
     // -------------------------------------------------------------------------
-    ctx.flags.dataDirty = true;   // erzwingt initialen Datenaufbau
+    ctx.flags.dataDirty = true; // erzwingt initialen Datenaufbau
     requestRedraw(ctx);
   } catch (e) {
     console.error(e);
     const mountEl = document.getElementById("app");
     if (mountEl) {
-      mountEl.innerHTML = `<pre style=\"color:#fff;white-space:pre-wrap\">${String(
+      mountEl.innerHTML = `<pre style="color:#fff;white-space:pre-wrap">${String(
         e?.stack || e
       )}</pre>`;
     }
