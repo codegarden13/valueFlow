@@ -82,6 +82,14 @@ function asTrimmed(v) {
 
 
 // Stable category colors: build once per category universe, cache in ctx
+/**
+ * Returns a stable category-to-color map for the current category universe.
+ * Reuses the cached map while the universe signature is unchanged.
+ *
+ * @param {object} ctx - Shared renderer context.
+ * @param {string[]} catsUniverse - Stable ordered category universe.
+ * @returns {Map<string, string>} Cached or newly built category color map.
+ */
 function ensureStableColorByCat(ctx, catsUniverse) {
   if (!ctx) throw new Error("ensureStableColorByCat: ctx missing");
   if (!Array.isArray(catsUniverse)) throw new Error("ensureStableColorByCat: catsUniverse must be an array");
@@ -110,6 +118,12 @@ function ensureStableColorByCat(ctx, catsUniverse) {
 // - Ziel: mergeModels NICHT mehrfach pro redraw/build-token ausführen.
 // - Keying: ctx.flags.dataBuildToken + Auswahl-Signatur
 // -----------------------------------------------------------------------------
+/**
+ * Returns the per-build-token merge cache used to avoid repeated model merges.
+ *
+ * @param {object} ctx - Shared renderer context.
+ * @returns {Map<string, object>} Cache keyed by merge signature.
+ */
 function getMergeCache(ctx) {
   if (!ctx) throw new Error("getMergeCache: ctx missing");
   if (!ctx.__mergeCache || typeof ctx.__mergeCache !== "object") {
@@ -129,6 +143,14 @@ function getMergeCache(ctx) {
   return ctx.__mergeCache.byKey;
 }
 
+/**
+ * Merges multiple models once per cache key and current data build token.
+ *
+ * @param {object} ctx - Shared renderer context.
+ * @param {string} key - Stable cache key for the selected model set.
+ * @param {object[]} models - Models to merge.
+ * @returns {object|null} Merged model, single input model, or null when empty.
+ */
 function cachedMergeModels(ctx, key, models) {
   const list = Array.isArray(models) ? models : [];
   if (!list.length) return null;
@@ -149,6 +171,13 @@ function cachedMergeModels(ctx, key, models) {
 // - Quelle der aktiven Kategorie: ctx.state.legendHighlightCat (gesetzt durch Legend-Hover-Bridge)
 // -----------------------------------------------------------------------------
 
+/**
+ * Resolves the configured display color for a category.
+ *
+ * @param {object} ctx - Shared renderer context.
+ * @param {string} cat - Category identity.
+ * @returns {string} CSS color string or empty string when unavailable.
+ */
 function getCategoryColor(ctx, cat) {
   const c = asCatId(cat);
   if (!c) return "";
@@ -159,7 +188,12 @@ function getCategoryColor(ctx, cat) {
   const v = m.get(c);
   return typeof v === "string" ? v : "";
 }
-
+/**
+ * Chooses a readable foreground color for a given background color.
+ *
+ * @param {string} bg - Background color in hex or rgb/rgba form.
+ * @returns {string} Suggested text color or empty string when unknown.
+ */
 function pickTextColor(bg) {
   // Simple contrast heuristic; falls parsing fails, keep default.
   const s = String(bg || "").trim();
@@ -198,8 +232,13 @@ function pickTextColor(bg) {
   return "";
 }
 
-
-
+/**
+ * Synchronizes the category tab label and its inline colors with the active category.
+ *
+ * @param {object} ctx - Shared renderer context.
+ * @param {string} cat - Active category identity.
+ * @returns {void}
+ */
 function setCategoryTabUI(ctx, cat) {
   const btn = document.getElementById("categoryTab");
 
@@ -260,7 +299,11 @@ function setCategoryTabUI(ctx, cat) {
 // -----------------------------------------------------------------------------
 // Factory
 // -----------------------------------------------------------------------------
-
+/**
+ * Creates the renderer facade used by the dashboard boot process.
+ *
+ * @returns {{ redraw: Function, ensureData: Function }} Renderer API.
+ */
 export function createRenderer() {
   // ---------------------------------------------------------------------------
   // ensureData(ctx)
@@ -269,6 +312,12 @@ export function createRenderer() {
   // - loadData MUSS im Boot laufen und ctx.raw setzen
   // - Renderer lädt NICHT nach, er validiert nur den Contract
   // ---------------------------------------------------------------------------
+  /**
+   * Validates that bootstrapped raw data is available in memory.
+   *
+   * @param {object} ctx - Shared renderer context.
+   * @returns {Promise<object>} The validated raw data container.
+   */
   async function ensureData(ctx) {
     if (!ctx) throw new Error("ensureData: ctx missing");
     if (!ctx.raw) {
@@ -280,6 +329,12 @@ export function createRenderer() {
     return ctx.raw;
   }
 
+  /**
+   * Clears chart and legend areas and shows the empty-filter subtitle.
+   *
+   * @param {object} ctx - Shared renderer context.
+   * @returns {void}
+   */
   function renderNoDataForFilterState(ctx) {
     if (ctx?.dom?.subtitleEl) ctx.dom.subtitleEl.textContent = "Keine Daten für aktuelle Filter.";
     if (ctx?.dom?.svgEl) ctx.dom.svgEl.innerHTML = "";
@@ -289,6 +344,12 @@ export function createRenderer() {
 // ---------------------------------------------------------------------------
 // Hover UX controllers (Chart ↔ Legend Halo ↔ Legend highlight ↔ Inspector)
 // ---------------------------------------------------------------------------
+/**
+ * Creates or returns the cached hover coordination layer for chart, legend and inspector.
+ *
+ * @param {object} ctx - Shared renderer context.
+ * @returns {{ _v: number, hoverCtl: object, inspector: object, onLegendHighlight: Function }} Hover UX bundle.
+ */
 function getHoverUX(ctx) {
   const CACHE_VERSION = 4; // bump when wiring changes
 
@@ -299,6 +360,12 @@ function getHoverUX(ctx) {
 
   const inspector = createCategoryInspector(ctx, { syncTab: false });
 
+  /**
+   * Resolves the effective hover color for a legend or bar payload.
+   *
+   * @param {{ color?: string, cat?: string }} payload - Hover payload.
+   * @returns {string} CSS color string.
+   */
   // Color resolver: prefer payload color, else derive from shared Map
   function getColor({ color, cat }) {
     const c = asTrimmed(color);
@@ -314,6 +381,12 @@ function getHoverUX(ctx) {
     return "rgba(255,255,255,0.9)";
   }
 
+  /**
+   * Pushes the current hover model into the category inspector and persistent category tab.
+   *
+   * @param {object|null} model - Hover model payload.
+   * @returns {void}
+   */
   function pushInspector(model) {
     console.log("[pushInspector] model:", model);
     const cat = asCatId(model?.cat);
@@ -363,6 +436,12 @@ function getHoverUX(ctx) {
   let pendingCat = null;
   let lastAppliedCat = Symbol("init");
 
+  /**
+   * Applies the active legend highlight to state, tab UI and legend renderer.
+   *
+   * @param {string|null} cat - Highlighted category identity.
+   * @returns {void}
+   */
   function applyLegendHighlight(cat) {
     // Strict: store identity string or null
     ctx.state.legendHighlightCat = cat;
@@ -381,6 +460,12 @@ function getHoverUX(ctx) {
     throw new Error("applyLegendHighlight: legendEl.__legendApi.updateHighlight missing (fallback disabled)");
   }
 
+  /**
+   * Handles legend highlight events and coalesces updates into a single animation frame.
+   *
+   * @param {CustomEvent} e - Legend highlight event.
+   * @returns {void}
+   */
   function onLegendHighlight(e) {
     const catRaw = e?.detail?.cat ?? null;
     const cat = catRaw == null ? null : String(catRaw);
@@ -487,6 +572,12 @@ function getHoverUX(ctx) {
 //       so category/source nodes never sum “hidden” data.
 //   - graph: legend network (may include planned/undated nodes; must NOT affect bars/totals)
 // ---------------------------------------------------------------------------
+/**
+ * Computes the complete derived renderer state from the raw source models.
+ *
+ * @param {object} ctx - Shared renderer context.
+ * @returns {Promise<void>}
+ */
 async function computeDerived(ctx) {
   // -------------------------------------------------------------------------
   // 0) RAW Contract
@@ -584,12 +675,10 @@ async function computeDerived(ctx) {
   // -------------------------------------------------------------------------
   // 2) Source filter (empty => all)
   // -------------------------------------------------------------------------
-  const enabledSources =
-    ctx.state.enabledSourceIds instanceof Set && ctx.state.enabledSourceIds.size
-      ? new Set(ctx.state.enabledSourceIds)
-      : new Set(options.sources);
-
-  const enabledSourcesSig = Array.from(enabledSources).sort((a, b) => String(a).localeCompare(String(b), "de")).join("|");
+  const enabledSources = resolveEnabledSources(ctx.state, options.sources);
+  const enabledSourcesSig = Array.from(enabledSources)
+    .sort((a, b) => String(a).localeCompare(String(b), "de"))
+    .join("|");
 
   const sourceEntries = Array.from(rawBySource.entries()).filter(([sid]) => enabledSources.has(sid));
   if (!sourceEntries.length) {
@@ -600,11 +689,7 @@ async function computeDerived(ctx) {
   // -------------------------------------------------------------------------
   // 3) Type filter (empty => all) – enabledTypes canonical (cleanKey)
   // -------------------------------------------------------------------------
-  const enabledTypes =
-    ctx.state.enabledTypes instanceof Set && ctx.state.enabledTypes.size
-      ? new Set(ctx.state.enabledTypes)
-      : new Set(options.universe.types);
-
+  const enabledTypes = resolveEnabledTypes(ctx.state, options.universe.types);
   if (!enabledTypes.size) throw new Error("computeDerived: enabledTypes empty (types universe broken)");
 
   // Merge selected sources exactly once
@@ -684,10 +769,7 @@ async function computeDerived(ctx) {
   const visibleCats = dedupeStable(rawVisibleCats.slice());
 
   // Clamp disabledCats ONLY to universe (persist user intent across filters)
-  const universeCatsSet = new Set(options.universe.cats);
-  for (const c of Array.from(ctx.state.disabledCats)) {
-    if (!universeCatsSet.has(c)) ctx.state.disabledCats.delete(c);
-  }
+  clampDisabledCatsToUniverse(ctx.state, options.universe.cats);
 
   const enabledCats = visibleCats.filter((c) => !ctx.state.disabledCats.has(c));
   const enabledCatSet = new Set(enabledCats);
@@ -704,30 +786,12 @@ async function computeDerived(ctx) {
   // Build aggregate rows aligned with active filters.
   // IMPORTANT: category/source totals must never include hidden sources/types/cats,
   // otherwise Kategorie-Nodes look “too high” compared to visible bars.
-  const rows = [];
-  for (const [sid, entry] of rawBySource.entries()) {
-    if (!enabledSources.has(sid)) continue;
-
-    const bars = Array.isArray(entry?.model?.bars) ? entry.model.bars : [];
-    for (const b of bars) {
-      const t = cleanKey(b?.type ?? b?.typ);
-      if (!t || !enabledTypes.has(t)) continue;
-
-      const c = b?.cat;
-      if (typeof c !== "string" || !c.length) continue;
-      if (!enabledCatSet.has(c)) continue;
-
-      rows.push({ ...b, type: t, sourceId: sid });
-    }
-  }
+  const rows = buildAggregateRows(rawBySource, enabledSources, enabledTypes, enabledCatSet);
 
   const aggregates = aggregate({ rows }, ctx.state);
 
   // Keep disabledCats stable across slices; only clamp to universe
-  const universeCatsSet2 = new Set(options.universe.cats);
-  for (const c of Array.from(ctx.state.disabledCats)) {
-    if (!universeCatsSet2.has(c)) ctx.state.disabledCats.delete(c);
-  }
+  clampDisabledCatsToUniverse(ctx.state, options.universe.cats);
 
   // -------------------------------------------------------------------------
   // 6) GRAPH BUILDER (STRICT – legend.js Contract)
@@ -775,6 +839,12 @@ async function computeDerived(ctx) {
   // ---------------------------------------------------------------------------
 
   // --- helpers extracted to top-level for compactness in redraw ---
+  /**
+   * Validates the minimal DOM and state contract required for a redraw.
+   *
+   * @param {object} ctx - Shared renderer context.
+   * @returns {object} Validated DOM bag.
+   */
   const requireCtx = (ctx) => {
     if (!ctx) throw new Error("redraw: ctx missing");
     if (!ctx.dom) throw new Error("redraw: ctx.dom missing");
@@ -796,11 +866,25 @@ async function computeDerived(ctx) {
     return dom;
   };
 
+  /**
+   * Stores the current renderer phase for diagnostics.
+   *
+   * @param {object} ctx - Shared renderer context.
+   * @param {string} p - Phase label.
+   * @returns {string} The assigned phase label.
+   */
   const setPhase = (ctx, p) => {
     ctx.__renderPhase = p;
     return p;
   };
 
+  /**
+   * Synchronizes year slider bounds and values with the derived year domain.
+   *
+   * @param {object} ctx - Shared renderer context.
+   * @param {object} options - Derived options object.
+   * @returns {void}
+   */
   const syncYearDomainToSliders = (ctx, options) => {
     const fromEl = ctx?.dom?.yearFromInput;
     const toEl = ctx?.dom?.yearToInput;
@@ -830,6 +914,13 @@ async function computeDerived(ctx) {
     toEl.value = String(s.yearTo);
   };
 
+  /**
+   * Mirrors derived options and current state back into the UI controls.
+   *
+   * @param {object} ctx - Shared renderer context.
+   * @param {object} options - UI-facing derived options.
+   * @returns {void}
+   */
   const syncUI = (ctx, options) => {
     setPhase(ctx, "syncUI:derived");
     syncYearDomainToSliders(ctx, options);
@@ -847,6 +938,14 @@ async function computeDerived(ctx) {
     if (ctx.ui?.renderOptions) ctx.ui.renderOptions(options);
   };
 
+  /**
+   * Reports a redraw failure with compact phase and state diagnostics.
+   *
+   * @param {object} ctx - Shared renderer context.
+   * @param {string} phase - Last successful phase.
+   * @param {Error} err - Failure object.
+   * @returns {void}
+   */
   const fail = (ctx, phase, err) => {
     console.groupCollapsed(
       `%credraw(ctx) failed in phase: ${phase}`,
@@ -861,6 +960,12 @@ async function computeDerived(ctx) {
     console.groupEnd();
   };
 
+  /**
+   * Recomputes derived state and re-renders chart, legend and supporting UI.
+   *
+   * @param {object} ctx - Shared renderer context.
+   * @returns {Promise<void>}
+   */
   async function redraw(ctx) {
     const dom = requireCtx(ctx);
 
@@ -989,37 +1094,9 @@ syncUI(ctx, uiOptions);
       // - We intentionally do NOT clamp to the current visible year range;
       //   span is computed across all years present in the data.
 
-      const enabledSources =
-        ctx.state.enabledSourceIds instanceof Set && ctx.state.enabledSourceIds.size
-          ? new Set(ctx.state.enabledSourceIds)
-          : new Set(options.sources);
-
-      const enabledTypes =
-        ctx.state.enabledTypes instanceof Set && ctx.state.enabledTypes.size
-          ? new Set(ctx.state.enabledTypes)
-          : new Set(options.universe.types);
-
-      const catYearSpan = new Map(); // cat -> {min,max}
-
-      for (const [sid, entry] of ctx.raw.bySource.entries()) {
-        if (!enabledSources.has(sid)) continue;
-        const bars = Array.isArray(entry?.model?.bars) ? entry.model.bars : [];
-
-        for (const b of bars) {
-          const y = Number(b?.year);
-          if (!Number.isFinite(y)) continue; // ignore undated
-
-          const t = cleanKey(b?.type ?? b?.typ);
-          if (!t || !enabledTypes.has(t)) continue;
-
-          const c = b?.cat; // Option A identity
-          if (typeof c !== "string" || !c.length) continue;
-
-          const cur = catYearSpan.get(c);
-          if (!cur) catYearSpan.set(c, { min: y, max: y });
-          else catYearSpan.set(c, { min: Math.min(cur.min, y), max: Math.max(cur.max, y) });
-        }
-      }
+      const enabledSources = resolveEnabledSources(ctx.state, options.sources);
+      const enabledTypes = resolveEnabledTypes(ctx.state, options.universe.types);
+      const catYearSpan = buildCatYearSpan(ctx.raw.bySource, enabledSources, enabledTypes);
 
       // Current year from hover/selection (set by barHoverController -> legend:highlight -> state)
       const highlightedYear = ctx.state.legendHighlightYear ?? null;
@@ -1061,4 +1138,119 @@ syncUI(ctx, uiOptions);
   }
 
   return { redraw, ensureData };
+}
+/**
+ * Resolves the currently enabled source IDs, defaulting to the full source universe.
+ *
+ * @param {object} state - Renderer state.
+ * @param {string[]} allSources - Full source universe.
+ * @returns {Set<string>} Active source IDs.
+ */
+function resolveEnabledSources(state, allSources) {
+  if (state?.enabledSourceIds instanceof Set && state.enabledSourceIds.size) {
+    return new Set(state.enabledSourceIds);
+  }
+  return new Set(allSources);
+}
+
+/**
+ * Resolves the currently enabled types, defaulting to the full type universe.
+ *
+ * @param {object} state - Renderer state.
+ * @param {string[]} allTypes - Full type universe.
+ * @returns {Set<string>} Active canonical type keys.
+ */
+function resolveEnabledTypes(state, allTypes) {
+  if (state?.enabledTypes instanceof Set && state.enabledTypes.size) {
+    return new Set(state.enabledTypes);
+  }
+  return new Set(allTypes);
+}
+
+/**
+ * Removes disabled categories that no longer exist in the category universe.
+ *
+ * @param {object} state - Renderer state.
+ * @param {string[]} universeCats - Full category universe.
+ * @returns {void}
+ */
+function clampDisabledCatsToUniverse(state, universeCats) {
+  if (!(state?.disabledCats instanceof Set)) return;
+
+  const universeCatsSet = new Set(universeCats);
+  for (const cat of Array.from(state.disabledCats)) {
+    if (!universeCatsSet.has(cat)) state.disabledCats.delete(cat);
+  }
+}
+
+/**
+ * Builds aggregate rows aligned with the active source, type and category filters.
+ *
+ * @param {Map<string, object>} rawBySource - Raw models keyed by source ID.
+ * @param {Set<string>} enabledSources - Active source IDs.
+ * @param {Set<string>} enabledTypes - Active canonical type keys.
+ * @param {Set<string>} enabledCatSet - Active category identities.
+ * @returns {object[]} Aggregate rows.
+ */
+function buildAggregateRows(rawBySource, enabledSources, enabledTypes, enabledCatSet) {
+  const rows = [];
+
+  for (const [sid, entry] of rawBySource.entries()) {
+    if (!enabledSources.has(sid)) continue;
+
+    const bars = Array.isArray(entry?.model?.bars) ? entry.model.bars : [];
+    for (const bar of bars) {
+      const typeKey = cleanKey(bar?.type ?? bar?.typ);
+      if (!typeKey || !enabledTypes.has(typeKey)) continue;
+
+      const cat = bar?.cat;
+      if (typeof cat !== "string" || !cat.length) continue;
+      if (!enabledCatSet.has(cat)) continue;
+
+      rows.push({ ...bar, type: typeKey, sourceId: sid });
+    }
+  }
+
+  return rows;
+}
+
+/**
+ * Computes the year span for each category across enabled sources and types.
+ *
+ * @param {Map<string, object>} rawBySource - Raw models keyed by source ID.
+ * @param {Set<string>} enabledSources - Active source IDs.
+ * @param {Set<string>} enabledTypes - Active canonical type keys.
+ * @returns {Map<string, { min: number, max: number }>} Per-category year span.
+ */
+function buildCatYearSpan(rawBySource, enabledSources, enabledTypes) {
+  const catYearSpan = new Map();
+
+  for (const [sid, entry] of rawBySource.entries()) {
+    if (!enabledSources.has(sid)) continue;
+
+    const bars = Array.isArray(entry?.model?.bars) ? entry.model.bars : [];
+    for (const bar of bars) {
+      const year = Number(bar?.year);
+      if (!Number.isFinite(year)) continue;
+
+      const typeKey = cleanKey(bar?.type ?? bar?.typ);
+      if (!typeKey || !enabledTypes.has(typeKey)) continue;
+
+      const cat = bar?.cat;
+      if (typeof cat !== "string" || !cat.length) continue;
+
+      const current = catYearSpan.get(cat);
+      if (!current) {
+        catYearSpan.set(cat, { min: year, max: year });
+        continue;
+      }
+
+      catYearSpan.set(cat, {
+        min: Math.min(current.min, year),
+        max: Math.max(current.max, year),
+      });
+    }
+  }
+
+  return catYearSpan;
 }
